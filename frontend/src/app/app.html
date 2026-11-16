@@ -15,21 +15,27 @@
     </div>
     @if (api.session()) {
       <nav class="nav" aria-label="Main navigation">
-        <a href="/" aria-current="page"
-          ><svg
-            class="nav-icon"
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.65"
-            stroke-linecap="round"
-            stroke-linejoin="round"
+        @for (item of navigation; track item.label) {
+          <a
+            [routerLink]="item.path"
+            routerLinkActive="active"
+            ariaCurrentWhenActive="page"
+            [attr.aria-label]="item.label"
           >
-            <path d="m3 10 9-7 9 7M5 9v11h14V9M10 20v-6h4v6" />
-          </svg>
-          Household settings</a
-        >
+            <svg
+              class="nav-icon"
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.65"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path [attr.d]="item.icon" /></svg
+            ><span>{{ item.label }}</span>
+          </a>
+        }
       </nav>
       <div class="sidefoot">
         <span class="avatar" aria-hidden="true">{{
@@ -43,14 +49,34 @@
   </aside>
   <main>
     <div class="top">
-      <span>Family Finance <span aria-hidden="true"> / </span> <strong>Household</strong></span>
-      @if (api.session() && config()?.signOutUrl) {
+      <span
+        >Family Finance <span aria-hidden="true"> / </span>
+        <strong>{{ currentTitle() }}</strong></span
+      >
+      @if (api.session() && api.session()!.households.length > 1) {
+        <div class="global-household">
+          <label for="household-selector">Household</label>
+          <select
+            id="household-selector"
+            class="field"
+            [value]="api.selectedId()"
+            (change)="selectHousehold($event)"
+          >
+            @for (h of api.session()!.households; track h.id) {
+              <option [value]="h.id">{{ h.name }}</option>
+            }
+          </select>
+        </div>
+      }
+      @if (api.session()) {
         <details class="profile-menu">
           <summary>Profile</summary>
           <div class="profile-links">
             <p>{{ api.session()!.user.email }}</p>
-            <a href="/">Household settings</a>
-            <a [href]="config()!.signOutUrl">Sign out</a>
+            <a routerLink="/settings">Household settings</a>
+            @if (config()?.signOutUrl) {
+              <a [href]="config()!.signOutUrl">Sign out</a>
+            }
           </div>
         </details>
       }

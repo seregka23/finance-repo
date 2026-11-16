@@ -461,6 +461,60 @@ async function verify() {
     },
   );
   await check(
+    "workspace summaries reflect saved rows and enforce live household access",
+    async () => {
+      const path = `/api/v1/households/${household.id}/workspace`;
+      const empty = {
+        accounts: 0,
+        transactions: 0,
+        plans: 0,
+        reserves: 0,
+        accountMovements: 0,
+      };
+      const summary = await api(path, owner);
+      assert.deepEqual(summary.counts, empty);
+      assert.ok(
+        Object.values(summary.capabilities).every((value) => value === false),
+      );
+      assert.deepEqual((await api(path, member)).counts, empty);
+      await api(path, stranger, { status: 404 });
+      await api(path, null, { status: 401 });
+      const accountId = randomUUID(),
+        categoryId = randomUUID(),
+        transactionId = randomUUID(),
+        planId = randomUUID(),
+        reserveId = randomUUID(),
+        movementId = randomUUID();
+      const quote = (value) => `'${String(value).replaceAll("'", "''")}'`;
+      const h = quote(household.id),
+        now = quote(new Date().toISOString());
+      await query(`
+      INSERT INTO accounts(id,household_id,name,type,currency,designation,created_at,updated_at) VALUES (${quote(accountId)},${h},'Synthetic verification account','cash','RSD','personal',${now},${now});
+      INSERT INTO categories(id,household_id,name,type,created_at,updated_at) VALUES (${quote(categoryId)},${h},'Synthetic category','expense',${now},${now});
+      INSERT INTO transactions(id,household_id,type,transaction_date,author_member_id,created_at,updated_at) VALUES (${quote(transactionId)},${h},'expense','2026-11-16',${quote(household.memberId)},${now},${now});
+      INSERT INTO monthly_plans(id,household_id,month,category_id,limit_minor,created_at,updated_at) VALUES (${quote(planId)},${h},'2026-11',${quote(categoryId)},0,${now},${now});
+      INSERT INTO reserves(id,household_id,account_id,name,created_at,updated_at) VALUES (${quote(reserveId)},${h},${quote(accountId)},'Synthetic reserve',${now},${now});
+      INSERT INTO account_movements(id,household_id,account_id,type,movement_date,amount_minor,currency,created_at) VALUES (${quote(movementId)},${h},${quote(accountId)},'opening_balance','2026-11-16',0,'RSD',${now});
+    `);
+      assert.deepEqual((await api(path, member)).counts, {
+        accounts: 1,
+        transactions: 1,
+        plans: 1,
+        reserves: 1,
+        accountMovements: 1,
+      });
+      assert.deepEqual(
+        (await api(`/api/v1/households/${other.id}/workspace`, stranger))
+          .counts,
+        empty,
+      );
+      await query(
+        `DELETE FROM account_movements WHERE id=${quote(movementId)}; DELETE FROM reserves WHERE id=${quote(reserveId)}; DELETE FROM monthly_plans WHERE id=${quote(planId)}; DELETE FROM transactions WHERE id=${quote(transactionId)}; DELETE FROM categories WHERE id=${quote(categoryId)}; DELETE FROM accounts WHERE id=${quote(accountId)};`,
+      );
+      assert.deepEqual((await api(path, owner)).counts, empty);
+    },
+  );
+  await check(
     "D1 batch access checks share writes and reject other households",
     async () => {
       const write = async (jwt, id, value, hh = household.id, status = 200) =>
@@ -493,6 +547,9 @@ async function verify() {
         { method: "DELETE", status: 204 },
       );
       assert.deepEqual((await api("/api/v1/session", member)).households, []);
+      await api(`/api/v1/households/${household.id}/workspace`, member, {
+        status: 404,
+      });
       await api(`/api/v1/households/${household.id}`, member, { status: 404 });
       await api(`/api/v1/households/${household.id}/members`, member, {
         status: 404,

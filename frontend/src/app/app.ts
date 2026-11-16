@@ -1,15 +1,35 @@
 import { Component, inject, signal } from '@angular/core';
-import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api, ApiError, AuthConfig } from './api';
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive],
   templateUrl: './app.html',
   host: { '(window:hashchange)': 'captureInvitation()' },
 })
 export class App {
   protected readonly api = inject(Api);
+  protected readonly currentTitle = signal('Dashboard');
+  protected readonly navigation = [
+    { label: 'Dashboard', path: '/dashboard', icon: 'm3 10 9-7 9 7M5 9v11h14V9M10 20v-6h4v6' },
+    { label: 'Accounts', path: '/accounts', icon: 'M3 7h18v12H3zM3 10h18M16 15h2' },
+    {
+      label: 'Transactions',
+      path: '/transactions',
+      icon: 'M4 7h15l-3-3M20 17H5l3 3M19 7l-3 3M5 17l3-3',
+    },
+    { label: 'Budgets', path: '/budgets', icon: 'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5' },
+    {
+      label: 'Reserves',
+      path: '/reserves',
+      icon: 'M4 10h16v10H4zM7 10V7a5 5 0 0 1 10 0v3M12 14v3',
+    },
+    { label: 'Reports', path: '/reports', icon: 'M4 20h16M6 17v-5M12 17V5M18 17V9' },
+  ];
+  protected selectHousehold(event: Event): void {
+    this.api.selectedId.set((event.target as HTMLSelectElement).value);
+  }
   private readonly router = inject(Router);
   protected readonly config = signal<AuthConfig | null>(null);
   protected readonly loading = signal(true);
@@ -18,6 +38,16 @@ export class App {
   protected readonly accepting = signal(false);
   constructor() {
     this.router.events.pipe(takeUntilDestroyed()).subscribe((event) => {
+      if (event instanceof NavigationEnd) {
+        document.querySelector<HTMLDetailsElement>('.profile-menu')?.removeAttribute('open');
+        const path = event.urlAfterRedirects.split(/[?#]/)[0];
+        this.currentTitle.set(
+          path === '/settings'
+            ? 'Household settings'
+            : (this.navigation.find((item) => item.path === path)?.label ?? 'Dashboard'),
+        );
+        setTimeout(() => document.querySelector<HTMLElement>('.content h1')?.focus());
+      }
       if (event instanceof NavigationEnd && event.urlAfterRedirects.includes('#invite=')) {
         this.captureInvitation();
         void this.router.navigateByUrl(event.urlAfterRedirects.split('#')[0], { replaceUrl: true });

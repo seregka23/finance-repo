@@ -92,8 +92,8 @@ h2 {
 }
 .nav a {
   display: block;
-  background: #303e69;
-  color: #fff;
+  background: transparent;
+  color: #bac5e5;
   text-decoration: none;
   padding: 11px 12px;
   border-radius: 8px;
@@ -477,4 +477,145 @@ input {
 }
 a {
   text-underline-offset: 3px;
+}
+.nav a:hover {
+  background: #273555;
+  color: #fff;
+}
+.nav a.active {
+  background: #303e69;
+  color: #eff2ff;
+}
+.global-household {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.global-household .field {
+  max-width: 180px;
+}
+.workspace-cols {
+  margin-top: 16px;
+}
+.balance-panel {
+  background: #e9edff;
+}
+.amount {
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-top: 10px;
+}
+.amount span {
+  font-size: 14px;
+}
+.panel > .btn {
+  margin-top: 16px;
+}
+.panel > .hint {
+  color: var(--muted);
+  margin-top: 8px;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+dialog {
+  width: min(540px, calc(100% - 24px));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  color: var(--ink);
+  padding: 0;
+}
+dialog::backdrop {
+  background: #19234180;
+}
+.dialogbody {
+  padding: 21px;
+}
+.dialoghead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.chooser {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 16px 0;
+}
+@media (max-width: 680px) {
+  .sidebar {
+    padding-left: 3px;
+    padding-right: 3px;
+  }
+  .nav {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 1px;
+  }
+  .nav a {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 1px;
+    font-size: 10px;
+    min-width: 0;
+  }
+  .nav-icon {
+    margin: 0;
+  }
+  .top > span {
+    display: none;
+  }
+  .global-household {
+    margin-left: 0;
+  }
+  .chooser {
+    grid-template-columns: 1fr;
+  }
+}
+.cashflow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 32px;
+  margin-top: 16px;
+}
+.cashflow strong {
+  display: block;
+  font-variant-numeric: tabular-nums;
+}
+.profile-menu {
+  margin-left: auto;
+}
+
+@media (max-width: 680px) {
+  .top {
+    gap: 8px;
+  }
+  .global-household {
+    flex: 1;
+    min-width: 0;
+  }
+  .global-household .field {
+    min-width: 0;
+    width: 100%;
+    flex: 1;
+  }
+  .profile-menu {
+    flex-shrink: 0;
+  }
+}
+@media (max-width: 360px) {
+  .nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .nav a {
+    font-size: 12px;
+  }
+  .content {
+    padding-bottom: 150px;
+  }
 }

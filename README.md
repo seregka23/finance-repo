@@ -117,7 +117,33 @@ isolated actual Worker/local-D1 fixture. It does not contact a real identity
 provider or modify remote resources. See the
 [issue #5 validation record](docs/verification/issue-5.md).
 
-## D1 environments
+## Navigation and first use
+
+Signed-in users can navigate Dashboard → Accounts → Transactions → Budgets →
+Reserves → Reports. Household settings remain under Profile. A person without
+a household is directed to the working creation form.
+
+These pages distinguish loading, errors and real empty household data using the
+authorized workspace summary. Detailed financial features are delivered in
+later issues: their controls are disabled with explanations. Add transaction
+opens the accessible method chooser; manual entry, SMS and image processing
+remain disabled until their APIs and screens are delivered.
+
+To run the full local navigation/accessibility check:
+
+```sh
+npm run verify:navigation
+```
+
+This needs Chromium. The script discovers common system installations; otherwise
+install Playwright's browser with `npx playwright-core install chromium`, or set
+`CHROMIUM_EXECUTABLE_PATH` to an installed Chromium binary. It builds both apps,
+runs signed Worker/D1 verification, tests desktop/mobile flows and axe checks,
+then removes its disposable processes and database. Screenshots and a report
+remain in ignored `.cloudflare/navigation-verification/`. No remote services are
+modified. See [issue #6 evidence](docs/verification/issue-6.md).
+
+## D1 environments and migrations
 
 All targets are explicit in `wrangler.jsonc`. D1 bindings and variables are
 declared for every named environment because Wrangler does not inherit them.

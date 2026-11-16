@@ -1,17 +1,8 @@
 <div class="pagehead">
   <div>
-    <h1>Household settings</h1>
+    <h1 tabindex="-1">Household settings</h1>
     <p>Manage the people and details in your shared household.</p>
   </div>
-  @if (api.session()!.households.length > 1) {
-    <label class="select-label"
-      >Household<select class="field" [value]="api.selectedId()" (change)="select($event)">
-        @for (h of api.session()!.households; track h.id) {
-          <option [value]="h.id">{{ h.name }}</option>
-        }
-      </select></label
-    >
-  }
 </div>
 @if (error()) {
   <div class="alert" role="alert">{{ error() }}</div>
