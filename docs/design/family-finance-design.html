@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Family Finance — Dashboard prototype</title>
+<style>
+:root{--paper:#f5f6fb;--white:#ffffff;--ink:#202944;--muted:#535e78;--line:#dfe3ee;--pine:#414fc0;--green:#216346;--sage:#e9edff;--coral:#a64a34;--sidebar:#18223f;--side-muted:#bac5e5;--accent:#c5ceff;--radius:14px}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.45 "Instrument Sans",Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums}button,input,select,textarea{font:inherit}button{cursor:pointer}button:disabled{cursor:wait;opacity:.65}button,a,input,select,textarea{outline-offset:4px} :focus-visible{outline:2px solid #515fcc}::selection{background:#c5ceff;color:#18223f}h1,h2,h3,p{margin:0}h1{font-size:38px;letter-spacing:-.038em;line-height:1.1;font-weight:650}h2{font-size:19px;letter-spacing:-.024em;line-height:1.2;font-weight:650}h3{font-size:14px}small,.muted{color:var(--muted)}.icon{width:19px;height:19px;display:inline-block;flex:none;vertical-align:middle}.num{white-space:nowrap}.income{color:var(--green)}.expense{color:var(--coral)}.shell{min-height:100vh;display:grid;grid-template-columns:222px minmax(0,1fr)}
+.sidebar{height:100dvh;position:sticky;top:0;background:var(--sidebar);color:#f5f7ff;display:flex;flex-direction:column;padding:27px 17px 18px;z-index:2}.brand{display:flex;gap:11px;align-items:center;padding:0 8px;margin-bottom:43px;font-size:18px;font-weight:680;letter-spacing:-.035em}.brandmark{width:35px;height:35px;border-radius:10px;display:grid;place-items:center;background:var(--accent);color:#243164}.brandmark .icon{width:21px;height:21px}.nav{display:grid;gap:5px}.nav button{width:100%;background:none;color:var(--side-muted);border:0;border-radius:8px;display:flex;gap:11px;align-items:center;text-align:left;padding:11px 12px;font-weight:530}.nav button:hover{background:#273555;color:white}.nav button[aria-current="page"]{background:#303e69;color:#eff2ff}.nav button[aria-current="page"] .icon{color:var(--accent)}.sidefoot{margin-top:auto;padding:11px 8px 0;border-top:1px solid #384767;display:flex;align-items:center;gap:10px}.avatars{display:flex;padding-right:2px}.avatar{width:27px;height:27px;display:grid;place-items:center;border-radius:50%;font-weight:700;font-size:10px;color:#26335c;background:#c5ceff;border:2px solid var(--sidebar)}.avatar+ .avatar{margin-left:-7px;background:#ecd6f3}.sidefoot small{display:block;color:var(--side-muted);font-size:11px}.sidefoot strong{font-size:12px}
+main{width:100%;min-width:0}.top{height:64px;padding:0 32px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);gap:10px}.crumb{display:flex;align-items:center;gap:10px;color:var(--muted);white-space:nowrap}.crumb b{color:var(--ink);font-weight:600}.crumb .icon{width:13px}.demo{color:#47557d;background:#e9edfb;border:1px solid #dbE1f6;border-radius:20px;padding:4px 10px;white-space:nowrap;font-size:11px;font-weight:650}.content{max-width:1430px;margin:auto;padding:29px 32px 36px}.pagehead{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:23px}.pagehead p{margin-top:7px;color:var(--muted)}.actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.btn,.field{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 12px;border-radius:8px;border:1px solid #c8d1e6;background:var(--white);color:var(--ink);font-weight:610;min-height:39px}.btn:hover{background:#ecf0fb}.btn.primary{background:var(--pine);border-color:var(--pine);color:#fff}.btn.primary:hover{background:#3744ac}.btn .icon,.textbtn .icon{width:16px;height:16px}.textbtn{display:inline-flex;align-items:center;gap:5px;background:none;border:0;border-radius:4px;color:var(--pine);font-weight:650;padding:3px 0;text-align:left;white-space:nowrap;font-size:12px}.textbtn:hover{text-decoration:underline;text-underline-offset:3px}.period{display:flex;align-items:center;gap:7px;position:relative;color:var(--muted);padding-right:4px}.period select{cursor:pointer;color:var(--ink);border:0;background:transparent;padding:6px 2px;font-weight:600}.period .icon{width:16px}
+.balance{background:var(--sage);border:1px solid #d7defb;border-radius:var(--radius);padding:18px 22px 19px;margin-bottom:16px}.sectionhead{display:flex;justify-content:space-between;align-items:center;gap:12px}.currencygrid{display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr;margin-top:16px}.currency{padding:0 19px;border-left:1px solid #cdd6f8;min-width:0}.currency:first-child{padding-left:0;border:0}.currency:last-child{padding-right:0}.currency p{font-size:12px;color:#495881;font-weight:580}.currency strong{display:block;font-size:26px;line-height:1.25;letter-spacing:-.032em;margin:4px 0}.currency strong span{font-size:12px;letter-spacing:0;font-weight:650;color:#3e4c75}.currency small{font-size:11px;display:block;margin-top:3px;color:#45547c}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);background:var(--white);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:16px}.stat{padding:13px 16px;display:flex;gap:11px;align-items:center;border-left:1px solid var(--line);min-width:0}.stat:first-child{border:0}.stat p{font-size:12px;color:var(--muted);margin-bottom:1px}.stat strong{font-size:20px;letter-spacing:-.025em}.stat strong span{font-size:11px;letter-spacing:0}.tileicon{width:34px;height:34px;display:grid;place-items:center;background:#e9f0e4;color:#2b6348;border-radius:9px;flex:none}.tileicon .icon{width:17px;height:17px}.tileicon.clay{background:#f6eae4;color:#9a4c3b}.tileicon.gold{background:#f1ecda;color:#6d582c}
+.cols{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,1fr);gap:16px;align-items:start}.stack{display:grid;gap:16px;min-width:0}.panel{background:var(--white);border:1px solid var(--line);border-radius:var(--radius);min-width:0;padding:17px 18px}.sub{font-size:12px;color:var(--muted);margin-top:4px}.chart{margin-top:13px;width:100%;height:155px;display:block}.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);justify-content:flex-end;margin-top:6px}.legend span{display:flex;gap:5px;align-items:center}.swatch{width:12px;height:2px;background:#4b58c7;border-radius:3px}.swatch.dash{background:none;border-top:2px dashed #717d9b}.mini{margin-top:13px}.budgetrow+.budgetrow{margin-top:12px}.budgetline{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:12px}.budgetline b{font-weight:650}.budgetline span{color:var(--muted);white-space:nowrap;font-size:11px}.budgetline span strong{color:var(--ink);font-weight:650}.track{width:100%;background:#ebeffa;height:6px;border-radius:4px;margin-top:5px;overflow:hidden}.track i{display:block;background:#6473d4;height:100%;border-radius:4px}.track .near{background:#b87854}.reserve-row{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--line)}.reserve-row:last-child{border:0;padding-bottom:0}.reserve-row .tileicon{width:31px;height:31px}.reserve-row small,.transaction small{display:block;font-size:11px}.reserve-row strong:last-child{margin-left:auto;text-align:right}.activity{padding-bottom:4px}.activity .sectionhead{margin-bottom:5px}.transaction{appearance:none;background:none;border:0;border-bottom:1px solid var(--line);width:100%;display:grid;grid-template-columns:34px minmax(0,1fr) minmax(85px,.8fr) auto;align-items:center;gap:9px;padding:8px 0;color:var(--ink);text-align:left}.transaction:last-child{border:0}.transaction:hover{background:#f0f2fc}.transaction .tileicon{width:31px;height:31px}.transaction b,.transaction .num{font-size:12px}.transaction .num{text-align:right;font-weight:650}.mobile-account{display:none!important}.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:15px}.filters input{min-width:170px;flex:1}.field{font-weight:480;max-width:100%}.list{display:grid;gap:12px}.empty{padding:22px 0;color:var(--muted)}.accountrow{display:grid;grid-template-columns:1.2fr repeat(3,1fr);gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}.accountrow:last-child{border:0}.accountrow p{color:var(--muted);font-size:12px}.accountrow strong{display:block}.summaryline{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.summaryline:last-child{border:0}.budgetfull .budgetrow{padding:12px 0}.budgetfull .budgetline{font-size:14px}.budgetfull .budgetline span{font-size:13px}.budgetfull .track{height:8px}.reservesfull .reserve-row{padding:13px 0}.reservesfull .reserve-row .btn{margin-left:auto}.reservesfull .reserve-row strong:nth-last-child(2){margin-left:auto}
+dialog{width:min(540px,calc(100% - 24px));padding:0;border:1px solid var(--line);border-radius:16px;background:var(--white);color:var(--ink);max-height:88dvh;box-shadow:0 16px 70px #19234130}dialog::backdrop{background:#19234180}.dialogbody{padding:21px}.dialogbody>.sectionhead{margin-bottom:13px}.close{min-width:36px;padding:6px}details{margin:12px 0;background:#f2f4fd;border-radius:8px;padding:8px 11px}summary{cursor:pointer;font-weight:650}.chooser{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:13px 0}.chooser button[aria-pressed=true]{border-color:#6a77bd;background:var(--sage)}form{display:grid;gap:12px}form label{display:grid;gap:4px;font-size:12px;font-weight:650;min-width:0}form .field{width:100%;display:block}form textarea{resize:vertical}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.formactions{display:flex;justify-content:flex-end;gap:7px;margin-top:3px}.notice{background:var(--sage);border-radius:8px;padding:9px 11px;color:#354578;font-size:12px}.error{color:#9a3128;min-height:0}.error:empty{display:none}.toast{position:fixed;right:20px;bottom:20px;z-index:5;background:var(--sidebar);color:white;padding:11px 15px;border-radius:9px;max-width:calc(100vw - 40px)}.toast:empty{display:none}
+@media(max-width:1100px){.shell{grid-template-columns:185px minmax(0,1fr)}.top,.content{padding-left:23px;padding-right:23px}.currency{padding:0 12px}.cols{grid-template-columns:minmax(0,1.45fr) minmax(270px,1fr)}}
+@media(max-width:860px){.shell{grid-template-columns:62px minmax(0,1fr)}.sidebar{padding:19px 8px}.brand{padding:0;justify-content:center;margin-bottom:27px}.brand span:last-child,.nav span,.sidefoot{display:none}.nav button{justify-content:center;padding:10px}.nav button .icon{width:20px;height:20px}.cols{grid-template-columns:minmax(0,1.35fr) minmax(253px,1fr)}}
+@media(max-width:680px){.shell{display:block}.sidebar{height:auto;position:fixed;top:auto;bottom:0;left:0;right:0;padding:5px 3px max(5px,env(safe-area-inset-bottom));border-top:1px solid #39496d}.brand{display:none}.nav{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1px}.nav button{flex-direction:column;gap:3px;padding:6px 1px;font-size:10px;min-height:46px}.nav span{display:inline}.nav button .icon{width:17px;height:17px}.top{height:51px}.top,.content{padding-left:15px;padding-right:15px}.content{padding-top:22px;padding-bottom:82px}.pagehead{align-items:flex-start;flex-direction:column;gap:12px;margin-bottom:16px}h1{font-size:31px}.cols{grid-template-columns:1fr}.currencygrid{grid-template-columns:1fr 1fr;row-gap:12px}.currency:nth-child(odd){border:0;padding-left:0}.currency strong{font-size:23px}.balance{padding:14px}.stats .stat{display:block;padding:8px 7px}.stats .tileicon{width:25px;height:25px;margin-bottom:4px}.stats .tileicon .icon{width:14px;height:14px}.stat strong{font-size:15px}.stat p{font-size:11px}.stat strong span{font-size:9px}.panel{padding:14px}.transaction{grid-template-columns:31px minmax(0,1fr) auto}.transaction .acct{display:none}.transaction .mobile-account{display:block!important}.chart{height:145px}.accountrow{grid-template-columns:1fr 1fr}.accountrow div:nth-child(2){text-align:right}.toast{bottom:70px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+  <div class="brand"><span class="brandmark" id="mark"></span><span>Family Finance</span></div>
+  <nav class="nav" id="nav" aria-label="Main navigation"></nav>
+  <div class="sidefoot"><div class="avatars" aria-hidden="true"><span class="avatar">S</span><span class="avatar">V</span></div><div><strong>Our household</strong><small>Shared workspace</small></div></div>
+</aside>
+<main><div class="top"><div class="crumb" id="crumb"></div><span class="demo">Demo data</span></div><div class="content" id="content"></div></main>
+</div>
+<dialog id="dialog"><div id="dialogbody" class="dialogbody"></div></dialog>
+<div class="toast" role="status" id="toast"></div>
+<script>
+const icons={
+  brand:'<path d="M3 11l9-7 9 7M5 10v10h14V10M9 15l2 2 4-5"/>',
+  dashboard:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  accounts:'<path d="M20 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-3M3 8h15"/><path d="M16 10h5v5h-5a2.5 2.5 0 1 1 0-5z"/>',
+  transactions:'<path d="M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4"/>',
+  budgets:'<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 8h6M9 12h6m-6 4h3"/>',
+  reserves:'<rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="12" cy="12.5" r="3"/><path d="M12 9.5v6m-3-3h6M6 22v-2m12 2v-2"/>',
+  reports:'<path d="M4 4v16h17M9 16v-4m5 4V8m5 8V5"/>',
+  chev:'<path d="m9 5 7 7-7 7"/>',right:'<path d="M4 12h15m-6-6 6 6-6 6"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18"/>',
+  up:'<path d="M6 17 17 6M8 6h9v9"/>',down:'<path d="M6 6l11 11m-9 0h9V8"/>',
+  trend:'<path d="m3 16 6-6 4 4 7-7m-5 0h5v5"/>',
+  cart:'<path d="M3 4h2l2 11h11l3-8H6"/><circle cx="9" cy="19" r="1"/><circle cx="17" cy="19" r="1"/>',
+  cup:'<path d="M4 6h13v7a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V6Zm13 2h2a2 2 0 0 1 0 4h-2M3 21h17"/>',
+  bolt:'<path d="m13 2-8 12h6l-1 8 9-12h-6l1-8Z"/>',
+  heart:'<path d="M20 5a5 5 0 0 0-7 0l-1 1-1-1a5 5 0 0 0-7 7l8 8 8-8a5 5 0 0 0 0-7Z"/>',
+  home:'<path d="m3 10 9-7 9 7M5 9v11h14V9M10 20v-6h4v6"/>',
+  x:'<path d="m6 6 12 12M18 6 6 18"/>', upload:'<path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/>',
+  download:'<path d="M12 3v13m-5-5 5 5 5-5M4 17v4h16v-4"/>'
+};
+const icon=(name)=>'<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+icons[name]+'</svg>';
+const esc=(value)=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fm=new Intl.NumberFormat('en-GB',{maximumFractionDigits:2});
+const n=(x)=>fm.format(Number(x));
+const m=(x,c='RSD')=>n(x)+' '+c;
+const money=(x,c='RSD')=>n(x)+' <span>'+esc(c)+'</span>';
+const months={'2026-11':'November 2026','2026-10':'October 2026'};
+const sampleDay='2026-11-16';
+const accounts=[
+  {name:'Cash · Shared',owner:'Shared',type:'Cash',cur:'RSD',bal:48300},
+  {name:'Personal card',owner:'Sergey',type:'Bank card',cur:'RSD',bal:136450},
+  {name:'Euro savings',owner:'Shared',type:'Savings',cur:'EUR',bal:2150},
+  {name:'Ruble account',owner:'Svetlana',type:'Bank card',cur:'RUB',bal:48000},
+  {name:'Dollar savings',owner:'Shared',type:'Savings',cur:'USD',bal:800}
+];
+const reserves=[
+  {name:'Utilities',account:0,amount:12000,icon:'bolt',tone:'gold'},
+  {name:'Baby essentials',account:0,amount:25000,icon:'heart',tone:'clay'}
+];
+const limits={'2026-11':{'Groceries':65000,'Household':24000,'Dining out':18000,'Transport':18000},'2026-10':{'Groceries':62000,'Household':22000,'Dining out':16000,'Transport':18000}};
+const categoryIcons={'Groceries':'cart','Household':'home','Dining out':'cup','Transport':'transactions','Rent':'home','Utilities':'bolt','Salary':'up','Health':'heart','Fees':'down'};
+const rates={RSD:1,EUR:117.2,RUB:1.19,USD:100};
+const demoRows=[
+['2026-11-16','Aroma Market',-3180,'Groceries',1],['2026-11-15','Kafeterija',-970,'Dining out',1],
+['2026-11-14','Cash top-up',-8000,'',1,'Transfer',0],['2026-11-13','Petrol station',-5100,'Transport',1],
+['2026-11-12','Household supplies',-6400,'Household',1],['2026-11-11','Lidl',-8240,'Groceries',1],
+['2026-11-10','Electricity',-4200,'Utilities',0],['2026-11-09','Dining out',-4260,'Dining out',1],
+['2026-11-08','Grocery run',-11360,'Groceries',0],['2026-11-07','Apartment rent',-650,'Rent',2],
+['2026-11-06','Home supplies',-12100,'Household',1],['2026-11-05','Aroma Market',-9920,'Groceries',1],
+['2026-11-04','Dining out',-3830,'Dining out',0],['2026-11-03','Lidl',-9800,'Groceries',1],
+['2026-11-02','Transit pass',-3950,'Transport',1],['2026-11-01','Monthly salary',265000,'Salary',1],
+['2026-10-28','Grocery run',-19400,'Groceries',1],['2026-10-24','Household supplies',-14900,'Household',1],
+['2026-10-21','Aroma Market',-8700,'Groceries',1],['2026-10-17','Dining out',-13600,'Dining out',0],
+['2026-10-14','Grocery run',-25900,'Groceries',1],['2026-10-10','Apartment rent',-650,'Rent',2],
+['2026-10-06','Transit pass',-11900,'Transport',1],['2026-10-01','Monthly salary',242000,'Salary',1]
+];
+const tx=demoRows.map(([date,name,amt,cat,account,type,to],id)=>({id,date,name,amt,cat,account,type:type||(amt>0?'Income':'Expense'),to,note:''}));
+const categories=Object.keys(categoryIcons);
+const pages=['Dashboard','Accounts','Transactions','Budgets','Reserves','Reports'];
+const content=document.getElementById('content'), nav=document.getElementById('nav'), dialog=document.getElementById('dialog'), body=document.getElementById('dialogbody');
+let page='Dashboard', month='2026-11', showAll=false, filter={q:'',type:'',category:'',account:'',owner:'',cur:''},toaster;
+const rows=(period=month)=>tx.filter(t=>t.date.startsWith(period)).sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+const sum=(r,type)=>r.filter(t=>type==='Expense'?['Expense','Refund'].includes(t.type):t.type===type).reduce((v,t)=>v+(type==='Expense'?-t.amt:t.amt)*rates[accounts[t.account].cur],0);
+const reserved=(i)=>reserves.filter(r=>r.account===i).reduce((v,r)=>v+r.amount,0);
+const currencyBalance=(cur)=>accounts.reduce((s,a)=>s+(a.cur===cur?a.bal:0),0);
+const currencyReserved=(cur)=>accounts.reduce((s,a,i)=>s+(a.cur===cur?reserved(i):0),0);
+const dateLabel=(value)=>new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',timeZone:'UTC'}).format(new Date(value+'T12:00:00Z'));
+const tile=(name,tone='')=>'<span class="tileicon '+tone+'">'+icon(name)+'</span>';
+const button=(label,action,graphic='',primary=false)=>'<button type="button" class="btn'+(primary?' primary':'')+'" data-action="'+action+'">'+(graphic?icon(graphic):'')+esc(label)+'</button>';
+const link=(label,target)=>'<button type="button" class="textbtn" data-page="'+target+'">'+label+icon('right')+'</button>';
+const head=(name,action)=>'<div class="sectionhead"><h2>'+name+'</h2>'+(action||'')+'</div>';
+const opts=(entries,value='')=>entries.map(([v,l])=>'<option value="'+esc(v)+'" '+(String(v)===String(value)?'selected':'')+'>'+esc(l)+'</option>').join('');
+const accountOptions=()=>accounts.map((a,i)=>[i,a.name+' · '+a.cur]);
+const monthControl=()=>'<label class="period">'+icon('calendar')+'<select aria-label="Budget month" id="month">'+opts(Object.entries(months),month)+'</select></label>';
+const switchPage=(name)=>{page=name;showAll=false;render();window.scrollTo({top:0});document.querySelector('h1').focus({preventScroll:true})};
+function heading(){
+  const supporting={
+    Dashboard:'A shared view of your household money.',
+    Accounts:'Balances, owners, and available funds by account.',
+    Transactions:'Review household activity and find individual entries.',
+    Budgets:'Track monthly spending against category limits.',
+    Reserves:'Set aside money from your existing accounts.',
+    Reports:'Review monthly cash flow and spending by category.'
+  };
+  const actions={
+    Dashboard:monthControl()+button('Add transaction','add','plus',true),
+    Transactions:monthControl()+button('Export CSV','export','download')+button('Add transaction','add','plus',true),
+    Accounts:button('Add account','new-account','plus',true),
+    Budgets:monthControl()+button('Set budget','new-budget','plus',true),
+    Reserves:button('Create reserve','new-reserve','plus',true),
+    Reports:monthControl()
+  };
+  return '<header class="pagehead"><div><h1 tabindex="-1">'+page+'</h1><p>'+supporting[page]+'</p></div><div class="actions">'+actions[page]+'</div></header>';
+}
+function balance(){
+  const labels={RSD:'Serbian dinar',EUR:'Euro',RUB:'Russian ruble',USD:'US dollar'};
+  return '<section class="balance">'+head('Account balances',link('View accounts','Accounts'))+
+    '<div class="currencygrid">'+Object.keys(labels).map(c=>{
+      const total=currencyBalance(c), locked=currencyReserved(c);
+      return '<div class="currency"><p>'+labels[c]+'</p><strong class="num">'+money(total,c)+'</strong><small>'+n(total-locked)+' available'+(locked?' · '+n(locked)+' reserved':'')+'</small></div>';
+    }).join('')+'</div></section>';
+}
+function stats(){
+  const r=rows(),income=sum(r,'Income'),spent=sum(r,'Expense'),net=income-spent;
+  return '<section class="stats" aria-label="Monthly cash flow">'+[
+    ['Income',income,'up',''],['Expenses',spent,'down','clay'],['Net cash flow',net,'trend','gold']
+  ].map(([label,v,i,t])=>'<div class="stat">'+tile(i,t)+'<div><p>'+label+'</p><strong class="num '+(i==='trend'?(v<0?'expense':'income'):'')+'">'+(i==='trend'&&v>0?'+':'')+money(v)+'</strong></div></div>').join('')+'</section>';
+}
+function chartPanel(){
+  const prev=month==='2026-11'?'2026-10':null;
+  return '<section class="panel">'+head('Spending over time',page==='Dashboard'?link('View reports','Reports'):'')+
+    '<p class="sub">Cumulative net expenses · RSD</p><canvas class="chart" id="chart" role="img" aria-label="'+esc(months[month])+' cumulative net expenses, '+esc(m(sum(rows(),'Expense')))+(prev?' compared with '+esc(months[prev])+' at '+esc(m(sum(rows(prev),'Expense'))):'')+'"></canvas>'+
+    '<div class="legend"><span><i class="swatch"></i>'+months[month]+'</span>'+(prev?'<span><i class="swatch dash"></i>'+months[prev]+'</span>':'')+'</div></section>';
+}
+function drawChart(){
+  const canvas=document.getElementById('chart');
+  if(!canvas)return;
+  const width=canvas.clientWidth,height=canvas.clientHeight,scale=window.devicePixelRatio||1;
+  canvas.width=width*scale;canvas.height=height*scale;
+  const ctx=canvas.getContext('2d');ctx.scale(scale,scale);
+  const L=42,R=10,T=10,B=25, w=width-L-R,h=height-T-B;
+  const currentLength=month==='2026-11'?30:31, currentShown=month==='2026-11'?Math.max(16,...rows().map(t=>Number(t.date.slice(-2)))):31;
+  const makeSeries=(period,length)=>{
+    const r=rows(period),vals=[0];
+    for(let day=1;day<=length;day++) vals.push(sum(r.filter(t=>Number(t.date.slice(-2))<=day),'Expense'));
+    return vals;
+  };
+  const now=makeSeries(month,currentShown),prior=month==='2026-11'?makeSeries('2026-10',30):[];
+  const hi=Math.max(40000,Math.ceil(Math.max(...now,...prior)/40000)*40000);
+  const lo=Math.min(0,Math.floor(Math.min(...now,...prior)/40000)*40000),range=hi-lo;
+  const x=(d)=>L+d/currentLength*w, y=(v)=>T+(hi-v)/range*h;
+  ctx.font='11px system-ui';ctx.fillStyle='#535e78';ctx.lineWidth=1;
+  for(let step=0;step<=4;step++){
+    const val=hi-step*range/4,py=y(val);
+    ctx.strokeStyle='#e0e5f2';ctx.beginPath();ctx.moveTo(L,py);ctx.lineTo(width-R,py);ctx.stroke();
+    ctx.textAlign='right';ctx.textBaseline='middle';ctx.fillText(val===0?'0':n(val/1000)+'k',L-8,py);
+  }
+  const shade=ctx.createLinearGradient(0,T,0,T+h);shade.addColorStop(0,'#7f92ef55');shade.addColorStop(1,'#7f92ef09');
+  const path=(data)=>{ctx.beginPath();data.forEach((v,i)=>i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v)))};
+  path(now);ctx.lineTo(x(now.length-1),y(0));ctx.lineTo(x(0),y(0));ctx.closePath();ctx.fillStyle=shade;ctx.fill();
+  if(prior.length){path(prior);ctx.strokeStyle='#717d9b';ctx.lineWidth=1.5;ctx.setLineDash([4,5]);ctx.stroke();ctx.setLineDash([])}
+  path(now);ctx.strokeStyle='#4b58c7';ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.stroke();
+  ctx.beginPath();ctx.arc(x(now.length-1),y(now.at(-1)),3.8,0,2*Math.PI);ctx.fillStyle='#4b58c7';ctx.fill();
+  ctx.fillStyle='#535e78';ctx.textBaseline='bottom';
+  [1,7,14,21,currentLength].forEach((d,i)=>{ctx.textAlign=i===0?'left':d===currentLength?'right':'center';ctx.fillText((month==='2026-11'?'Nov ':'Oct ')+d,x(d),height-2)});
+}
+function budgetPanel(full=false){
+  const r=rows(),entries=Object.entries(limits[month]);
+  return '<section class="panel '+(full?'budgetfull':'')+'">'+head('Monthly budgets',full?'':link('View budgets','Budgets'))+
+    '<p class="sub">Spent against planned limits · RSD</p><div class="mini">'+entries.map(([cat,limit])=>{
+      const spent=sum(r.filter(t=>t.cat===cat),'Expense'),p=Math.max(0,Math.min(100,spent/limit*100));
+      return '<div class="budgetrow"><div class="budgetline"><b>'+esc(cat)+'</b><span><strong>'+n(spent)+'</strong> / '+n(limit)+'</span></div>'+
+        '<div class="track" role="progressbar" aria-label="'+esc(cat)+' budget" aria-valuenow="'+Math.round(p)+'"><i class="'+(p>=88?'near':'')+'" style="width:'+p+'%"></i></div>'+
+        (full?'<p class="sub">'+m(Math.abs(limit-spent))+(spent>limit?' over budget':' remaining')+'</p>':'')+'</div>';
+    }).join('')+'</div></section>';
+}
+function reservePanel(full=false){
+  return '<section class="panel '+(full?'reservesfull':'')+'">'+head('Reserves',full?'':link('View reserves','Reserves'))+
+    '<div class="mini">'+reserves.map((r,i)=>'<div class="reserve-row">'+tile(r.icon,r.tone)+'<div><b>'+esc(r.name)+'</b><small>'+esc(accounts[r.account].name)+'</small></div><strong class="num">'+m(r.amount,accounts[r.account].cur)+'</strong>'+(full?button('Manage','reserve-'+i):'')+'</div>').join('')+'</div></section>';
+}
+function transaction(t){
+  const a=accounts[t.account],isTransfer=t.type==='Transfer',sign=t.amt>0?'+':'−',badge=t.type==='Income'||t.type==='Refund'?'':isTransfer?'gold':'clay';
+  const accountLabel=esc(a.name)+(isTransfer?' → '+esc(accounts[t.to].name):'');
+  return '<button type="button" data-action="tx-'+t.id+'" class="transaction">'+tile(isTransfer?'transactions':categoryIcons[t.cat]||'budgets',badge)+
+    '<span><b>'+esc(t.name)+'</b><small>'+dateLabel(t.date)+' · '+esc(t.cat||t.type)+'</small><small class="mobile-account">'+accountLabel+'</small></span>'+
+    '<small class="acct">'+accountLabel+'</small>'+
+    '<span class="num '+(t.amt>0?'income':'')+'">'+(isTransfer?'':sign)+m(Math.abs(t.amt),a.cur)+'</span></button>';
+}
+function activity(){
+  const r=rows().slice(0,15);
+  return '<section class="panel activity">'+head('Recent transactions',link('All transactions','Transactions'))+
+    (r.length?r.slice(0,showAll?15:5).map(transaction).join(''):'<p class="empty">No transactions this month.</p>')+
+    (r.length>5?'<button id="expand" class="textbtn" type="button" data-action="expand" aria-expanded="'+showAll+'">'+(showAll?'Show fewer':'Show latest '+r.length)+'</button>':'')+'</section>';
+}
+function filtered(){
+  return rows().filter(t=>{
+    const a=accounts[t.account];
+    const q=filter.q.trim().toLowerCase();
+    return (!q||(t.name+' '+t.note).toLowerCase().includes(q))&&(!filter.type||t.type===filter.type)&&(!filter.category||t.cat===filter.category)&&(!filter.account||String(t.account)===filter.account||(t.type==='Transfer'&&String(t.to)===filter.account))&&(!filter.owner||a.owner===filter.owner)&&(!filter.cur||a.cur===filter.cur);
+  });
+}
+const filterSelect=(key,label,items)=>'<select class="field" aria-label="'+label+'" data-filter="'+key+'">'+opts([['',label],...items],filter[key])+'</select>';
+function transactionList(){
+  return '<section class="panel"><div class="filters"><input class="field" data-filter="q" aria-label="Search transactions" placeholder="Search merchant or note" value="'+esc(filter.q)+'">'+
+    filterSelect('type','All types',['Expense','Income','Transfer','Refund'].map(v=>[v,v]))+
+    filterSelect('category','All categories',categories.map(v=>[v,v]))+
+    filterSelect('account','All accounts',accountOptions())+
+    filterSelect('owner','All owners',[...new Set(accounts.map(a=>a.owner))].map(v=>[v,v]))+
+    filterSelect('cur','All currencies',Object.keys(rates).map(v=>[v,v]))+
+    button('Reset filters','reset')+'</div><div id="results"></div></section>';
+}
+function renderResults(){
+  const target=document.getElementById('results');if(!target)return;
+  const r=filtered();
+  target.innerHTML=r.length?r.map(transaction).join(''):'<p class="empty">No matching transactions. Try resetting the filters or changing the month.</p>';
+}
+function accountsPanel(){
+  return '<section class="panel">'+head('Household accounts')+accounts.map((a,i)=>'<div class="accountrow"><div><strong>'+esc(a.name)+'</strong><p>'+esc(a.type)+' · '+esc(a.owner)+'</p></div><div><p>Balance</p><strong>'+m(a.bal,a.cur)+'</strong></div><div><p>Reserved</p><strong>'+m(reserved(i),a.cur)+'</strong></div><div><p>Available</p><strong>'+m(a.bal-reserved(i),a.cur)+'</strong></div></div>').join('')+'</section>';
+}
+function breakdown(){
+  const r=rows(),rank=categories.map(cat=>[cat,sum(r.filter(t=>t.cat===cat),'Expense')]).filter(([,v])=>v!==0).sort((a,b)=>b[1]-a[1]);
+  return '<section class="panel">'+head('Expenses by category')+(rank.length?rank.map(([cat,v])=>'<div class="summaryline"><span>'+esc(cat)+'</span><strong>'+m(v)+'</strong></div>').join(''):'<p class="empty">No expenses this month.</p>')+'</section>';
+}
+function render(){
+  nav.innerHTML=pages.map(p=>'<button type="button" aria-label="'+p+'" data-page="'+p+'" '+(p===page?'aria-current="page"':'')+'>'+icon(p.toLowerCase())+'<span>'+p+'</span></button>').join('');
+  document.getElementById('crumb').innerHTML='<span>Household</span>'+icon('chev')+'<b>'+page+'</b>';
+  const panels={
+    Dashboard:()=>balance()+stats()+'<div class="cols"><div class="stack">'+chartPanel()+activity()+'</div><div class="stack">'+budgetPanel()+reservePanel()+'</div></div>',
+    Accounts:()=>balance()+accountsPanel(),
+    Transactions:transactionList,
+    Budgets:()=>budgetPanel(true),
+    Reserves:()=>reservePanel(true),
+    Reports:()=>stats()+'<div class="cols">'+chartPanel()+breakdown()+'</div>'
+  };
+  content.innerHTML=heading()+panels[page]();
+  renderResults();drawChart();
+}
+function toast(message){
+  const target=document.getElementById('toast');
+  target.textContent=message;clearTimeout(toaster);
+  toaster=setTimeout(()=>target.textContent='',3600);
+}
+function openDialog(title,html){
+  body.innerHTML='<div class="sectionhead"><h2 id="dialogtitle">'+title+'</h2><button type="button" class="btn close" aria-label="Close dialog" data-action="close">'+icon('x')+'</button></div>'+html;
+  dialog.setAttribute('aria-labelledby','dialogtitle');
+  if(!dialog.open)dialog.showModal();
+  else body.querySelector('input,textarea,select,button')?.focus();
+}
+const input=(label,name,properties)=>'<label>'+label+'<input class="field" name="'+name+'" '+properties+'></label>';
+const select=(label,name,options,value='')=>'<label>'+label+'<select class="field" name="'+name+'">'+opts(options,value)+'</select></label>';
+const noteField=(value='')=>'<label>Note<textarea name="note" class="field" rows="2">'+esc(value)+'</textarea></label>';
+const formEnd=(label)=>'<p class="error" role="alert"></p><div class="formactions">'+button('Cancel','close')+'<button type="submit" class="btn primary">'+label+'</button></div>';
+const modes=(mode)=>'<div class="chooser" aria-label="Entry method"><button class="btn" type="button" data-action="add" aria-pressed="'+(mode==='manual')+'">Add manually</button><button class="btn" type="button" data-action="import" aria-pressed="'+(mode==='import')+'">'+icon('upload')+' Import SMS or image</button></div>';
+function entry(type='Expense',draft=null,editing=null,working=null){
+  const all=accountOptions(), prior=working||draft||editing, selected=prior?.account??1;
+  const reserveOptions=()=>[['','None'],...reserves.map((r,i)=>[i,r.name+' · '+accounts[r.account].name])];
+  const date=prior?.date||(month==='2026-11'?sampleDay:month+'-01');
+  const typeOptions=editing&&type==='Transfer'?['Transfer']:['Expense','Income','Transfer'];
+  const name=input('Merchant or description','name','placeholder="e.g. Aroma Market" value="'+esc(prior?.name||'')+'"');
+  const amount=input(type==='Transfer'?'Amount sent':'Amount','amount','required type="number" min="0.01" max="1000000000" step="0.01" value="'+(prior?Math.abs(prior.amt):'')+'"');
+  openDialog(draft?'Review import draft':editing?'Edit transaction':'Add transaction',
+    (draft?'<p class="notice">Sample extraction · Review the amount, account and suggested category before posting.</p>':editing?'':modes('manual'))+
+    (draft?.items?'<details><summary>Receipt items</summary>'+draft.items.map(([label,v])=>'<div class="summaryline"><span>'+esc(label)+'</span><strong>'+m(v)+'</strong></div>').join('')+'</details>':'')+
+    '<form id="entryform"><div class="formgrid">'+select('Type','type',typeOptions.map(v=>[v,v]),type)+input('Date','date','required type="date" value="'+esc(date)+'"')+'</div>'+
+    '<div class="formgrid">'+select(type==='Transfer'?'From account':'Account','account',all,selected)+amount+'</div>'+
+    (type==='Transfer'?'<div class="formgrid">'+select('To account','to',all,prior?.to??0)+input('Amount received','received','required type="number" min="0.01" max="1000000000" step="0.01" value="'+(prior?.received??(editing?.type==='Transfer'?Math.abs(editing.amt):''))+'"')+'</div>':
+    '<div class="formgrid">'+select(draft?'Suggested category':'Category','category',categories.map(c=>[c,c]),prior?.cat||(type==='Income'?'Salary':'Groceries'))+
+    (type==='Expense'?select('Pay from reserve','reserve',reserveOptions(),prior?.reserve??''):'')+'</div>')+
+    name+noteField(prior?.note)+formEnd(draft?'Confirm and post':editing?'Save changes':'Add transaction')+'</form>');
+  const f=document.getElementById('entryform');
+  const read=()=>{
+    const d=new FormData(f);const a=Number(d.get('account')), amt=Number(d.get('amount'));
+    return {date:d.get('date'),name:d.get('name').trim(),amt:type==='Income'?amt:-amt,cat:d.get('category')||'',account:a,type,to:d.has('to')?Number(d.get('to')):null,received:d.has('received')?Number(d.get('received')):null,reserve:d.get('reserve')==null||d.get('reserve')===''?null:Number(d.get('reserve')),note:d.get('note')};
+  };
+  f.elements.type.addEventListener('change',()=>entry(f.elements.type.value,draft,editing,read()));
+  f.addEventListener('submit',e=>{
+    e.preventDefault();
+    const t=read(), a=accounts[t.account], reserve=reserves[t.reserve];
+    const original=editing&&tx.find(item=>item.id===editing.id);
+    const err=f.querySelector('.error');
+    if(!t.date||!months[t.date.slice(0,7)]){err.textContent='Choose a date in October or November 2026 for this demo.';return}
+    if(type==='Transfer'&&t.account===t.to){err.textContent='Choose two different accounts.';return}
+    if(type==='Transfer'&&a.cur===accounts[t.to].cur&&Math.abs(t.amt)!==t.received){err.textContent='Amounts must match for a same-currency transfer.';return}
+    if(type!=='Income'){
+      const undo=original?.account===t.account?-original.amt:original?.type==='Transfer'&&original.to===t.account?-(original.received??Math.abs(original.amt)):0;
+      const restore=original?.reserve!=null&&original.account===t.account?-original.amt:0;
+      if(reserve){
+        const usable=reserve.amount+(original?.reserve===t.reserve?restore:0);
+        if(reserve.account!==t.account||usable<-t.amt){err.textContent='Choose a reserve on the selected account with enough funds.';return}
+      }else if(a.bal+undo<-t.amt+reserved(t.account)+restore){
+        err.textContent='The account does not have enough available funds.';return;
+      }
+    }
+    t.id=editing?.id??Math.max(-1,...tx.map(x=>x.id))+1;
+    t.name=t.name||(type==='Transfer'?'Account transfer':t.cat);
+    if(original){
+      changeBalances(original,-1);
+      tx[tx.indexOf(original)]=t;
+    }else tx.push(t);
+    changeBalances(t,1);
+    month=t.date.slice(0,7);dialog.close();render();toast(editing?'Transaction updated.':'Transaction added to demo.');
+  });
+}
+function changeBalances(t,direction){
+  accounts[t.account].bal+=t.amt*direction;
+  if(t.type==='Transfer')accounts[t.to].bal+=(t.received??Math.abs(t.amt))*direction;
+  if(t.reserve!=null)reserves[t.reserve].amount+=t.amt*direction;
+}
+function importForm(){
+  openDialog('Add transaction',modes('import')+
+    '<form id="importform"><p class="notice">Try the review step with a sample draft. Your text and images stay in this browser.</p><label>Bank SMS<textarea class="field" name="sms" rows="3" placeholder="Paste a bank notification"></textarea></label>'+
+    '<label>Notification screenshot or receipt photo<input class="field" name="image" type="file" accept="image/jpeg,image/png,image/webp"></label>'+
+    '<p class="error" role="alert"></p><div class="formactions">'+button('Use sample receipt','sample')+'<button type="submit" class="btn primary">Preview draft</button></div></form>');
+  document.getElementById('importform').addEventListener('submit',event=>{
+    event.preventDefault();
+    const f=event.currentTarget;
+    if(!f.elements.sms.value.trim()&&!f.elements.image.files.length){f.querySelector('.error').textContent='Paste sample text, choose a test image, or use the sample receipt.';return}
+    sample();
+  });
+}
+function sample(){
+  entry('Expense',{name:'Market receipt',amt:-1840,account:1,cat:'Groceries',items:[['Fresh produce',660],['Dairy',720],['Bread',460]]});
+}
+function txDetails(id){
+  const t=tx.find(x=>x.id===id),a=accounts[t.account];
+  openDialog('Transaction details','<p class="sub">'+dateLabel(t.date)+' · '+esc(t.type)+'</p>'+
+    '<div class="summaryline"><span>'+esc(t.name)+'</span><strong>'+m(Math.abs(t.amt),a.cur)+'</strong></div>'+
+    '<div class="summaryline"><span>Account</span><strong>'+esc(a.name)+'</strong></div>'+
+    (t.type==='Transfer'?'<div class="summaryline"><span>Received by '+esc(accounts[t.to].name)+'</span><strong>'+m(t.received??Math.abs(t.amt),accounts[t.to].cur)+'</strong></div>':'<div class="summaryline"><span>Category</span><strong>'+esc(t.cat)+'</strong></div>')+
+    (t.reserve!=null?'<div class="summaryline"><span>Reserve</span><strong>'+esc(reserves[t.reserve].name)+'</strong></div>':'')+
+    (t.note?'<div class="summaryline"><span>Note</span><strong>'+esc(t.note)+'</strong></div>':'')+
+    '<div class="formactions">'+button('Edit transaction','edit-'+id,'',true)+'</div>');
+}
+function simpleForm(kind,index){
+  const titles={account:'Add account',budget:'Set monthly budget',reserve:'Create reserve',adjust:'Manage reserve'};
+  const fields={
+    account:()=>input('Account name','name','required maxlength="45"')+'<div class="formgrid">'+select('Account type','type',['Cash','Bank card','Savings'].map(c=>[c,c]))+select('Currency','cur',Object.keys(rates).map(c=>[c,c]))+'</div>'+
+      '<div class="formgrid">'+select('Owner','owner',['Shared','Sergey','Svetlana'].map(c=>[c,c]))+input('Opening balance','amount','required type="number" step="0.01" min="0" max="1000000000" value="0"')+'</div>',
+    budget:()=>select('Category','cat',categories.filter(c=>c!=='Salary').map(c=>[c,c]))+input('Monthly limit · RSD','amount','required type="number" step="0.01" min="0.01" max="1000000000"'),
+    reserve:()=>input('Reserve name','name','required maxlength="45"')+select('Account','account',accountOptions())+input('Amount to set aside','amount','required type="number" step="0.01" min="0.01" max="1000000000"'),
+    adjust:()=>'<p class="notice">'+esc(reserves[index]?.name)+' · '+m(reserves[index]?.amount||0,accounts[reserves[index]?.account]?.cur)+'</p>'+select('Action','direction',[['1','Add funds'],['-1','Release funds']])+input('Amount','amount','required type="number" step="0.01" min="0.01" max="1000000000"')
+  };
+  openDialog(titles[kind],'<form id="simpleform">'+fields[kind]()+formEnd('Save')+'</form>');
+  document.getElementById('simpleform').addEventListener('submit',e=>{
+    e.preventDefault();
+    const f=e.currentTarget,data=new FormData(f),name=data.get('name')?.trim(),amount=Number(data.get('amount'));
+    const err=f.querySelector('.error');
+    if((kind==='account'||kind==='reserve')&&!name){err.textContent='Enter a name.';return}
+    if(kind==='account')accounts.push({name,owner:data.get('owner'),type:data.get('type'),cur:data.get('cur'),bal:amount});
+    if(kind==='budget')limits[month][data.get('cat')]=amount;
+    if(kind==='reserve'){
+      const i=Number(data.get('account'));
+      if(amount>accounts[i].bal-reserved(i)){err.textContent='The selected account does not have that much available.';return}
+      reserves.push({name,account:i,amount,icon:'reserves',tone:''});
+    }
+    if(kind==='adjust'){
+      const r=reserves[index], change=amount*Number(data.get('direction'));
+      if(change>accounts[r.account].bal-reserved(r.account)||r.amount+change<0){err.textContent='Enter an amount within the available balance or reserve.';return}
+      r.amount+=change;
+    }
+    dialog.close();render();toast('Saved in this demo.');
+  });
+}
+function exportCSV(){
+  const csvCell=(value)=>{
+    let s=String(value??'');
+    if(typeof value==='string'&&/^[\s]*[=+@-]|^[\t\r\n]/.test(s))s="'"+s;
+    return '"'+s.replaceAll('"','""')+'"';
+  };
+  const lines=[['Date','Description','Type','Category','Account','Amount','Currency','Destination account','Amount received','Destination currency','Note'],
+    ...filtered().map(t=>[t.date,t.name,t.type,t.cat,accounts[t.account].name,t.amt,accounts[t.account].cur,t.type==='Transfer'?accounts[t.to].name:'',t.type==='Transfer'?t.received??Math.abs(t.amt):'',t.type==='Transfer'?accounts[t.to].cur:'',t.note])];
+  const url=URL.createObjectURL(new Blob([lines.map(row=>row.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));
+  const a=document.createElement('a');a.href=url;a.download='transactions-'+month+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast('CSV exported.');
+}
+document.addEventListener('click',event=>{
+  const b=event.target.closest('button');
+  if(!b)return;
+  if(b.dataset.page){switchPage(b.dataset.page);return}
+  const action=b.dataset.action;
+  if(!action)return;
+  if(action==='add'){entry();return}
+  if(action==='close'){dialog.close();return}
+  if(action==='import'){importForm();return}
+  if(action==='sample'){sample();return}
+  if(action==='export'){exportCSV();return}
+  if(action==='reset'){Object.keys(filter).forEach(k=>filter[k]='');render();document.querySelector('[data-filter="q"]').focus();return}
+  if(action==='expand'){showAll=!showAll;render();document.getElementById('expand')?.focus({preventScroll:true});return}
+  if(action.startsWith('tx-')){txDetails(Number(action.slice(3)));return}
+  if(action.startsWith('edit-')){const t=tx.find(x=>x.id===Number(action.slice(5)));entry(t.type,null,t);return}
+  if(action.startsWith('new-')){simpleForm(action.slice(4));return}
+  if(action.startsWith('reserve-'))simpleForm('adjust',Number(action.slice(8)));
+});
+document.addEventListener('change',event=>{
+  if(event.target.id==='month'){month=event.target.value;render();document.getElementById('month')?.focus();return}
+  if(event.target.dataset.filter){filter[event.target.dataset.filter]=event.target.value;renderResults()}
+});
+document.addEventListener('input',event=>{
+  if(event.target.dataset.filter==='q'){filter.q=event.target.value;renderResults()}
+});
+document.getElementById('mark').innerHTML=icon('brand');
+window.addEventListener('resize',drawChart);
+render();
+</script>
+</body>
+</html>

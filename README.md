@@ -3,6 +3,13 @@
 Angular and NestJS deployed together as one Cloudflare Worker named `finance-repo`.
 Run the deployment commands from the repository root.
 
+## Design reference
+
+Future frontend work follows [DESIGN.md](DESIGN.md) and the user-supplied
+[Family Finance HTML template](docs/design/family-finance-design.html).
+The original template is saved unchanged as a local, interactive design
+reference. Its sample data is illustrative; the live application is unchanged.
+
 ## Structure
 
 ```text
