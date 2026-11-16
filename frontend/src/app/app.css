@@ -1,0 +1,38 @@
+.api-status {
+  margin-block-start: 2rem;
+}
+
+.api-status h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  color: var(--gray-900);
+}
+
+.api-status p {
+  margin-block: 0.75rem;
+  max-width: 30ch;
+}
+
+.api-status button {
+  padding: 0.625rem 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  background: white;
+  color: var(--bright-blue);
+  font: inherit;
+  cursor: pointer;
+}
+
+.api-status button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bright-blue) 8%, white);
+}
+
+.api-status button:focus-visible {
+  outline: 2px solid var(--bright-blue);
+  outline-offset: 3px;
+}
+
+.api-status button:disabled {
+  color: var(--gray-700);
+  cursor: wait;
+}
