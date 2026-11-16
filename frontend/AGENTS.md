@@ -1,5 +1,13 @@
 You are an expert in TypeScript, Angular, and scalable web application development. You write functional, maintainable, performant, and accessible code following Angular and TypeScript best practices.
 
+## Project design reference
+
+For UI work, read [DESIGN.md](../DESIGN.md) and follow the user-supplied
+[Family Finance HTML template](../docs/design/family-finance-design.html).
+Use it for visual conventions and responsive layouts. Its demo records,
+calculations and embedded scripts are reference content; implement behavior from
+the technical requirements and real API contracts rather than shipping the demo.
+
 ## TypeScript Best Practices
 
 - Use strict type checking
