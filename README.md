@@ -17,6 +17,7 @@ npm run start:dev
 
 The API runs at http://localhost:3000. The starter `GET /` endpoint returns
 `Hello World!`.
+`GET /api/hello` returns the JSON greeting `{ "message": "Hello World!" }`.
 
 ```sh
 npm run build
@@ -36,7 +37,13 @@ npm start
 ```
 
 The application runs at http://localhost:4200. Routing is enabled; the initial
-page is the Angular starter page.
+page requests `/api/hello` and displays the NestJS greeting. Loading, error,
+and retry states are included.
+
+Keep the backend running on port 3000. The Angular development server proxies
+`/api/**` to `http://127.0.0.1:3000` using `frontend/proxy.conf.json`.
+For production, configure the hosting server to forward `/api/**` to NestJS;
+the Angular development proxy is not included in the production build.
 
 ```sh
 npm run build
@@ -47,5 +54,5 @@ Each application has its own `package.json` and `package-lock.json`. Run npm
 commands from the relevant application directory. Build output, dependencies,
 and local caches are excluded from Git.
 
-These are starter applications. Database access, authentication, and communication
-between the frontend and backend can be added as features are implemented.
+These are starter applications. Database access and authentication can be added
+as features are implemented.

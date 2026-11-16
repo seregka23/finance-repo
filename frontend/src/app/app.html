@@ -234,6 +234,21 @@
       </svg>
       <h1>Hello, {{ title() }}</h1>
       <p>Congratulations! Your app is running. 🎉</p>
+      <section class="api-status" aria-labelledby="api-heading">
+        <h2 id="api-heading">NestJS response</h2>
+        <p role="status">
+          @if (greeting.isLoading()) {
+            Connecting to the backend…
+          } @else if (greeting.error()) {
+            Could not reach the backend. Please try again.
+          } @else if (greeting.hasValue()) {
+            {{ greeting.value().message }}
+          }
+        </p>
+        <button type="button" (click)="greeting.reload()" [disabled]="greeting.isLoading()">
+          {{ greeting.error() ? 'Try again' : 'Refresh response' }}
+        </button>
+      </section>
     </div>
     <div class="divider" role="separator" aria-label="Divider"></div>
     <div class="right-side">

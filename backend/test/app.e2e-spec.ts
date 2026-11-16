@@ -26,4 +26,12 @@ describe('AppController (e2e)', () => {
   afterEach(async () => {
     await app.close();
   });
+
+  it('/api/hello (GET) returns the greeting as JSON', () => {
+    return request(app.getHttpServer())
+      .get('/api/hello')
+      .expect(200)
+      .expect('Content-Type', /json/)
+      .expect({ message: 'Hello World!' });
+  });
 });
