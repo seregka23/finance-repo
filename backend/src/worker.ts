@@ -10,13 +10,28 @@ let application: Promise<INestApplication> | undefined;
 
 function initialize(): Promise<INestApplication> {
   application ??= NestFactory.create(
-    WorkerModule.register(env.DB, env.INFRASTRUCTURE_PROBE_ENABLED === 'true'),
+    WorkerModule.register(env.DB, env.INFRASTRUCTURE_PROBE_ENABLED === 'true', {
+      teamDomain: env.ACCESS_TEAM_DOMAIN,
+      audience: env.ACCESS_AUDIENCE,
+      appOrigin: env.ACCESS_APP_ORIGIN,
+    }),
     {
       logger: ['error', 'warn'],
       abortOnError: false,
     },
   )
     .then(async (app) => {
+      app.use(
+        '/api/v1',
+        (
+          _req: unknown,
+          res: { setHeader(name: string, value: string): void },
+          next: () => void,
+        ) => {
+          res.setHeader('Cache-Control', 'no-store');
+          next();
+        },
+      );
       await app.listen(3000);
       return app;
     })

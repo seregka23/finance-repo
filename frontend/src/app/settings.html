@@ -1,0 +1,186 @@
+<div class="pagehead">
+  <div>
+    <h1>Household settings</h1>
+    <p>Manage the people and details in your shared household.</p>
+  </div>
+  @if (api.session()!.households.length > 1) {
+    <label class="select-label"
+      >Household<select class="field" [value]="api.selectedId()" (change)="select($event)">
+        @for (h of api.session()!.households; track h.id) {
+          <option [value]="h.id">{{ h.name }}</option>
+        }
+      </select></label
+    >
+  }
+</div>
+@if (error()) {
+  <div class="alert" role="alert">{{ error() }}</div>
+}
+@if (success()) {
+  <div class="notice" role="status">{{ success() }}</div>
+}
+<div class="cols">
+  <div class="stack">
+    <section class="panel">
+      <h2>{{ household() ? 'Household details' : 'Create a household' }}</h2>
+      <p class="sub">
+        {{
+          household()
+            ? 'The details shared by everyone in this household.'
+            : 'Start a shared space for your household.'
+        }}
+      </p>
+      @if (!household() || household()!.role === 'owner') {
+        <form [formGroup]="form" (ngSubmit)="save()">
+          <label
+            >Household name<input
+              class="field"
+              formControlName="name"
+              maxlength="100"
+              required /></label
+          ><label
+            >Time zone <span class="hint">Optional · IANA name, for example Europe/Belgrade</span
+            ><input class="field" formControlName="timeZone" placeholder="Europe/Belgrade"
+          /></label>
+          @if (household()) {
+            <p class="sub">
+              Base currency: <strong>{{ household()!.baseCurrency }}</strong>
+            </p>
+          }
+          <div class="actions">
+            <button class="btn primary" type="submit" [disabled]="busy()">
+              {{ busy() ? 'Saving…' : household() ? 'Save changes' : 'Create household' }}
+            </button>
+          </div>
+        </form>
+      } @else {
+        <dl>
+          <div>
+            <dt>Name</dt>
+            <dd>{{ household()!.name }}</dd>
+          </div>
+          <div>
+            <dt>Time zone</dt>
+            <dd>{{ household()!.timeZone }}</dd>
+          </div>
+          <div>
+            <dt>Base currency</dt>
+            <dd>{{ household()!.baseCurrency }}</dd>
+          </div>
+        </dl>
+        <p class="sub">Only the household owner can edit these details.</p>
+      }
+    </section>
+    @if (household()) {
+      <section class="panel">
+        <h2>People</h2>
+        <p class="sub">A household can have up to two active or invited people.</p>
+        @if (loading()) {
+          <p role="status">Loading people…</p>
+        } @else if (members()) {
+          @if (!members()!.members.length && !members()!.invitations.length) {
+            <p class="empty">No people to show yet.</p>
+          }
+          @for (member of members()!.members; track member.id) {
+            <div class="person">
+              <span class="person-icon" aria-hidden="true">{{
+                (member.email || '?').charAt(0).toUpperCase()
+              }}</span>
+              <div class="person-info">
+                <strong>{{ member.email || 'Email unavailable' }}</strong><small
+                  >{{ member.role }} · {{ member.status
+                  }}{{ member.id === household()!.memberId ? ' · You' : '' }}</small
+                >
+              </div>
+              @if (household()!.role === 'owner' && member.id !== household()!.memberId) {
+                @if (confirmMember() === member.id) {
+                  <div class="confirm">
+                    <span>Revoke access?</span
+                    ><button
+                      class="textbtn danger"
+                      [disabled]="busy()"
+                      (click)="remove('members', member.id)"
+                    >
+                      Yes, revoke</button
+                    ><button class="textbtn" (click)="confirmMember.set(null)">Keep</button>
+                  </div>
+                } @else {
+                  <button class="textbtn danger" (click)="confirmMember.set(member.id)">
+                    Revoke access
+                  </button>
+                }
+              }
+            </div>
+          }
+          @for (inv of members()!.invitations; track inv.id) {
+            <div class="person">
+              <span class="person-icon" aria-hidden="true"
+                ><svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                >
+                  <rect x="3" y="5" width="18" height="14" rx="2" />
+                  <path d="m3 6 9 7 9-7" /></svg
+              ></span>
+              <div class="person-info">
+                <strong>{{ inv.email }}</strong><small
+                  >{{ inv.status }} · Expires {{ inv.expiresAt | date: 'medium' }}</small
+                >
+              </div>
+              @if (household()!.role === 'owner') {
+                <button
+                  class="textbtn danger"
+                  [disabled]="busy()"
+                  (click)="remove('invitations', inv.id)"
+                >
+                  Cancel invitation
+                </button>
+              }
+            </div>
+          }
+        } @else {
+          <p class="empty">People could not be loaded.</p>
+          <button class="btn" (click)="loadMembers(household()!.id)">Try again</button>
+        }
+      </section>
+    }
+  </div>
+  @if (household()?.role === 'owner') {
+    <section class="panel">
+      <h2>Invite a member</h2>
+      <p class="sub">
+        Create a private link for the person you want to share this household with. They must sign
+        in using the invited email address.
+      </p>
+      <form [formGroup]="invitationForm" (ngSubmit)="invite()">
+        <label
+          >Email address<input
+            class="field"
+            type="email"
+            autocomplete="email"
+            formControlName="email"
+            required /></label
+        ><button class="btn primary" type="submit" [disabled]="busy()">Create invitation</button>
+      </form>
+      @if (inviteLink()) {
+        <div class="linkbox">
+          <label for="invite-link">Invitation link</label
+          ><input id="invite-link" class="field" readonly [value]="inviteLink()" /><button
+            class="btn"
+            type="button"
+            (click)="copy()"
+          >
+            Copy link
+          </button>
+          <p class="sub">
+            Share this link privately. It will not be shown again after you leave this page.
+          </p>
+        </div>
+      }
+    </section>
+  }
+</div>
