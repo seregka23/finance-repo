@@ -1,0 +1,22 @@
+{
+  "name": "finance-repo",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.9.0",
+  "engines": {
+    "node": ">=24.15.0 <25"
+  },
+  "scripts": {
+    "postinstall": "npm run install:apps",
+    "install:apps": "npm ci --prefix backend && npm ci --prefix frontend",
+    "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "cf:types": "wrangler types backend/.cloudflare/types/index.d.ts",
+    "dev:cloudflare": "npm run build && wrangler dev --local --port 8787",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:check": "npm run build && wrangler deploy --dry-run",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local"
+  },
+  "devDependencies": {
+    "wrangler": "4.163.0"
+  }
+}

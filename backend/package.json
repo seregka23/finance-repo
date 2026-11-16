@@ -7,8 +7,7 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
-    "build": "nest build",
-    "deploy": "nest deploy",
+    "build": "npm --prefix .. run cf:types && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -19,7 +18,10 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
+    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "prestart": "npm --prefix .. run cf:types",
+    "prestart:dev": "npm --prefix .. run cf:types",
+    "prestart:debug": "npm --prefix .. run cf:types"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
