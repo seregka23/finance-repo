@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
-    "build": "cf workers types --mode development && nest build",
+    "build": "npm --prefix .. run cf:types && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -19,18 +19,9 @@
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
-    "cloudflare:prepare": "npm run build && npm --prefix ../frontend run build",
-    "cloudflare:dev": "npm run cloudflare:prepare && cf dev --mode development --port 8787",
-    "cloudflare:build": "npm run cloudflare:prepare && cf build --mode development",
-    "cloudflare:check": "npm run cloudflare:build && cf deploy --mode development --prebuilt --dry-run",
-    "cloudflare:typecheck": "cf workers types --mode development && tsc --project tsconfig.cloudflare.json --noEmit",
-    "db:migrate:local": "node scripts/d1-local.mjs migrate",
-    "db:smoke:local": "node scripts/d1-local.mjs smoke",
-    "deploy:test": "npm run cloudflare:prepare && cf deploy --mode test",
-    "deploy:production": "npm run cloudflare:prepare && cf deploy --mode production",
-    "prestart": "cf workers types --mode development",
-    "prestart:dev": "cf workers types --mode development",
-    "prestart:debug": "cf workers types --mode development"
+    "prestart": "npm --prefix .. run cf:types",
+    "prestart:dev": "npm --prefix .. run cf:types",
+    "prestart:debug": "npm --prefix .. run cf:types"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
@@ -40,7 +31,6 @@
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "2.0.0-rc.0",
     "@nestjs/cli": "^12.0.0",
     "@nestjs/mau": "^0.2.6",
     "@nestjs/schematics": "^12.0.0",
@@ -49,7 +39,6 @@
     "@types/node": "^24.0.0",
     "@types/supertest": "^7.0.0",
     "@vitest/coverage-v8": "^4.1.2",
-    "cf": "1.0.0-rc.0",
     "oxlint": "^1.58.0",
     "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.4.2",

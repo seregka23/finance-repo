@@ -1,0 +1,37 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "finance-repo",
+  "account_id": "32d0e852b83ed6fc374b1c53d97b5729",
+  "main": "backend/dist/worker.js",
+  "compatibility_date": "2026-11-16",
+  "compatibility_flags": ["nodejs_compat", "enable_nodejs_http_server_modules"],
+  // Nest imports these optional packages even in an HTTP-only app. Keep their
+  // normal missing-package behavior without requiring unused feature stacks.
+  // Install the real package and remove its alias before enabling that feature.
+  "alias": {
+    "class-validator": "./backend/cloudflare/missing-optional-package.mjs",
+    "class-transformer": "./backend/cloudflare/missing-optional-package.mjs",
+    "@nestjs/microservices": "./backend/cloudflare/missing-optional-package.mjs",
+    "@nestjs/microservices/microservices-module.js": "./backend/cloudflare/missing-optional-package.mjs",
+    "@nestjs/websockets/socket-module.js": "./backend/cloudflare/missing-optional-package.mjs"
+  },
+  "assets": {
+    "directory": "frontend/dist/frontend/browser",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "family-finance-test",
+      "database_id": "f0855884-2cee-4d5a-8e35-33fb360d441c",
+      "migrations_dir": "backend/migrations"
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true },
+    "traces": { "enabled": true }
+  }
+}
