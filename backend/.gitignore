@@ -10,3 +10,9 @@
 !.env.example
 *.log
 .DS_Store
+
+# Cloudflare generated bindings, builds, local D1 data and secrets
+/.cloudflare/
+/.wrangler/
+.dev.vars*
+!.dev.vars.example
