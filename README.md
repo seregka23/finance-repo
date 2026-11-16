@@ -62,7 +62,7 @@ After this PR is merged, use these build settings:
 | --- | --- |
 | Root directory | Repository root (leave blank or use `/`) |
 | Build command | `npm run build` |
-| Deploy command | `npx wrangler deploy` |
+| Deploy command | `npx wrangler deploy --env ""` |
 | Node.js version | `24` (`NODE_VERSION=24` if a build variable is needed) |
 
 The root `package-lock.json` selects npm and pins Wrangler. Cloudflare's automatic
@@ -71,6 +71,9 @@ have disabled automatic dependency installation, use `npm ci && npm run build`
 as the build command instead.
 
 The deploy command runs after the build; it does not need to rebuild the apps.
+The empty environment selects the existing top-level test deployment explicitly.
+An older `npx wrangler deploy` setting still uses that target, with a Wrangler
+warning about choosing an environment.
 The Worker name in `wrangler.jsonc` matches the existing `finance-repo` Worker.
 Use Workers Builds, rather than a Pages-only static deployment, because NestJS
 runs as Worker code.
@@ -93,12 +96,26 @@ do not deploy or create remote resources.
 
 ## D1 database
 
-The `DB` binding points to the separate `family-finance-test` D1 database created
-during setup. Its account/database identifiers in `wrangler.jsonc` are resource
-identifiers, not secrets. No existing family-finance database is reused.
-Before intentionally targeting another database, update both its name and ID in
-`wrangler.jsonc`. The infrastructure migration is already recorded in this test
-database; household financial schemas are separate work.
+All targets are explicit in `wrangler.jsonc`. D1 bindings and variables are
+declared for every named environment because Wrangler does not inherit them.
+
+| Target | Worker | Database | Probe writes |
+| --- | --- | --- | --- |
+| Default (existing Git deployment) | `finance-repo` | Existing `family-finance-test` | Disabled |
+| `--env local --local` | Local simulator | Dedicated local-only simulator ID | Enabled on loopback hosts only |
+| `--env test` | `finance-repo-test` | Existing `family-finance-test` | Disabled |
+| `--env production` | Proposed `finance-repo-production` | **Unconfigured placeholder; separate production D1 required** | Disabled |
+
+The default remains an alias for the current test deployment so existing Git
+build settings keep working. It does not become a production environment.
+Local development never uses remote bindings. No production database has been
+created or migrated for this issue; replace the clearly marked production ID
+placeholder with a real separate database only after agreeing the production
+environment. Never substitute a local simulator or test ID for production.
+
+The existing infrastructure migration is unchanged. No financial schemas or
+records are added. Local data is kept under ignored `.wrangler/` state; changing
+to the named local environment does not delete earlier simulator data.
 
 Apply migrations to the local simulator:
 
@@ -106,12 +123,17 @@ Apply migrations to the local simulator:
 npm run db:migrate:local
 ```
 
-When a future migration is ready for that remote database, review it first and
-run the explicit remote command:
+To inspect or apply a future reviewed migration in the explicit test target:
 
 ```sh
-npx wrangler d1 migrations apply DB --remote
+npx wrangler d1 migrations list DB --env test --remote
+npx wrangler d1 migrations apply DB --env test --remote
 ```
+
+Only after production has a real separate database and a migration/recovery
+plan, its explicit command is
+`npx wrangler d1 migrations apply DB --env production --remote`.
+No remote migration is performed by build or verification commands.
 
 Deploying code does not automatically apply database migrations. Local D1 data
 is kept under the ignored root `.wrangler/` directory, separately from remote D1.
@@ -125,9 +147,34 @@ npm run db:migrate:local
 npm run dev:cloudflare
 ```
 
-Open http://localhost:8787. Restart this command after source changes to rebuild.
+This selects `--env local --local`. Open http://localhost:8787. Restart this
+command after source changes to rebuild.
 `/api/hello` returns `{ "message": "Hello World!" }`; `/api/health` queries the D1
 binding and returns `{ "status": "ok", "database": "ok" }`.
+
+### Repeatable Worker/D1 verification
+
+```sh
+npm run verify:local
+```
+
+This builds the apps and runs actual Wrangler/Workerd instances against a new,
+temporary local D1 store. It applies the versioned migration, creates/reads a
+quoted Unicode value through the NestJS API, restarts the Worker, replays the
+migration and checks that data/history survive, then deletes the synthetic probe
+and disposes of its own state. It does not touch an existing local database or
+any remote database. Failures include the relevant local logs.
+
+The proof API is registered only when `INFRASTRUCTURE_PROBE_ENABLED=true`, which
+is set only in the local environment. It also rejects non-loopback hosts. With
+local Wrangler running, POST `/api/infrastructure/probe` with
+`{ "value": "local check" }` returns `{ "id": "<generated UUID>", "value": "local check" }`.
+GET and DELETE `/api/infrastructure/probe/<id>` read and clean up that record.
+The body accepts only one string field of 1–256 characters. These routes are
+absent from default/test/production deployments; this is not a financial API.
+
+See [issue #3 verification and decisions](docs/verification/issue-3.md) for the
+acceptance record and remaining production decisions.
 
 For separate Node/Angular development, use two terminals after the root install:
 
