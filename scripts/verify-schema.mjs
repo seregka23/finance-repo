@@ -238,7 +238,7 @@ async function seed() {
       household_id,
       identity_subject: null,
       role: "member",
-      status: "active",
+      status: "invited",
       ...dated,
     },
     accounts: {
@@ -370,7 +370,11 @@ async function verify() {
       assert.deepEqual(fullHistory.slice(0, 1), baselineHistory);
       assert.deepEqual(
         fullHistory.map((r) => r.name),
-        ["0001_infrastructure_probe.sql", "0002_household_finance_schema.sql"],
+        [
+          "0001_infrastructure_probe.sql",
+          "0002_household_finance_schema.sql",
+          "0003_household_access.sql",
+        ],
       );
       assert.deepEqual(
         await all(

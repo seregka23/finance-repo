@@ -94,7 +94,30 @@ token. The connected Cloudflare app and local Wrangler have separate credentials
 Deployment is an explicit action: installing, building, testing and the dry run
 do not deploy or create remote resources.
 
-## D1 database
+## Sign-in and household settings
+
+The application uses Cloudflare Access for sign-in and D1 for live household
+membership. See [Access setup and the API contract](docs/authentication.md)
+before enabling it on a deployment. Configure `ACCESS_TEAM_DOMAIN`,
+`ACCESS_AUDIENCE` and `ACCESS_APP_ORIGIN` separately in each target environment;
+they are intentionally blank until the real Access application is configured.
+Protected APIs fail closed without configuration.
+
+Owners can create an empty household, edit settings, share an email-bound
+invitation link, cancel invitations and revoke a member. Households have up to
+two active or invited people. Both members share household data; account
+ownership does not make accounts private.
+
+```sh
+npm run verify:access
+```
+
+This builds the apps and tests signed identities and household workflows in an
+isolated actual Worker/local-D1 fixture. It does not contact a real identity
+provider or modify remote resources. See the
+[issue #5 validation record](docs/verification/issue-5.md).
+
+## D1 environments
 
 All targets are explicit in `wrangler.jsonc`. D1 bindings and variables are
 declared for every named environment because Wrangler does not inherit them.
@@ -206,8 +229,8 @@ npm --prefix frontend test -- --watch=false
 npm run deploy:check
 ```
 
-The current app includes the greeting integration and infrastructure health
-check. Authentication and financial workflows remain future work.
+The app includes household authentication/access and settings, plus the greeting
+integration and infrastructure health check. Financial workflows remain future work.
 
 Wrangler aliases the starter's missing optional NestJS packages to a module that
 rejects their import, preserving Nest's optional-package handling. Before adding
