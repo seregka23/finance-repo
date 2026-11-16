@@ -37,6 +37,8 @@ npm run build
 The root install automatically runs `npm ci` in `backend/` and `frontend/`, using
 all three committed lockfiles. The build generates Worker types, compiles NestJS
 into `backend/dist/`, and builds Angular into `frontend/dist/frontend/browser/`.
+The types command creates its output directory first, so no generated files or
+directories need to exist on a fresh checkout.
 
 To validate packaging without deploying:
 
