@@ -10,7 +10,7 @@
     "postinstall": "npm run install:apps",
     "install:apps": "npm ci --prefix backend && npm ci --prefix frontend",
     "build": "npm run build --prefix backend && npm run build --prefix frontend",
-    "cf:types": "wrangler types backend/.cloudflare/types/index.d.ts",
+    "cf:types": "node -e \"require('node:fs').mkdirSync('backend/.cloudflare/types', { recursive: true })\" && wrangler types backend/.cloudflare/types/index.d.ts",
     "dev:cloudflare": "npm run build && wrangler dev --local --port 8787",
     "deploy": "npm run build && wrangler deploy",
     "deploy:check": "npm run build && wrangler deploy --dry-run",
