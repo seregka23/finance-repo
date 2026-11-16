@@ -113,8 +113,12 @@ created or migrated for this issue; replace the clearly marked production ID
 placeholder with a real separate database only after agreeing the production
 environment. Never substitute a local simulator or test ID for production.
 
-The existing infrastructure migration is unchanged. No financial schemas or
-records are added. Local data is kept under ignored `.wrangler/` state; changing
+The existing infrastructure migration is unchanged. Migration `0002` adds the
+[household finance schema](docs/database/schema.md) with scoped foreign keys,
+integer minor units and unique budget, request and import-source keys. It seeds
+no records. See the [migration and recovery guide](docs/database/migrations.md)
+before applying it to a real database.
+Local data is kept under ignored `.wrangler/` state; changing
 to the named local environment does not delete earlier simulator data.
 
 Apply migrations to the local simulator:
@@ -155,10 +159,16 @@ binding and returns `{ "status": "ok", "database": "ok" }`.
 ### Repeatable Worker/D1 verification
 
 ```sh
+npm run verify:schema
 npm run verify:local
 ```
 
-This builds the apps and runs actual Wrangler/Workerd instances against a new,
+`verify:schema` applies the baseline and finance migrations to a disposable local
+D1 database. It checks household isolation, uniqueness under simultaneous writes,
+money/rate constraints, failed-batch rollback and safe migration replay. See the
+[issue #4 acceptance record](docs/verification/issue-4.md).
+
+`verify:local` builds the apps and runs actual Wrangler/Workerd instances against a new,
 temporary local D1 store. It applies the versioned migration, creates/reads a
 quoted Unicode value through the NestJS API, restarts the Worker, replays the
 migration and checks that data/history survive, then deletes the synthetic probe
