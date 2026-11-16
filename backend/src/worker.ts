@@ -9,10 +9,13 @@ const handler = httpServerHandler({ port: 3000 });
 let application: Promise<INestApplication> | undefined;
 
 function initialize(): Promise<INestApplication> {
-  application ??= NestFactory.create(WorkerModule.register(env.DB), {
-    logger: ['error', 'warn'],
-    abortOnError: false,
-  })
+  application ??= NestFactory.create(
+    WorkerModule.register(env.DB, env.INFRASTRUCTURE_PROBE_ENABLED === 'true'),
+    {
+      logger: ['error', 'warn'],
+      abortOnError: false,
+    },
+  )
     .then(async (app) => {
       await app.listen(3000);
       return app;

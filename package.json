@@ -10,11 +10,12 @@
     "postinstall": "npm run install:apps",
     "install:apps": "npm ci --prefix backend && npm ci --prefix frontend",
     "build": "npm run build --prefix backend && npm run build --prefix frontend",
-    "cf:types": "node -e \"require('node:fs').mkdirSync('backend/.cloudflare/types', { recursive: true })\" && wrangler types backend/.cloudflare/types/index.d.ts",
-    "dev:cloudflare": "npm run build && wrangler dev --local --port 8787",
-    "deploy": "npm run build && wrangler deploy",
-    "deploy:check": "npm run build && wrangler deploy --dry-run",
-    "db:migrate:local": "wrangler d1 migrations apply DB --local"
+    "cf:types": "node -e \"require('node:fs').mkdirSync('backend/.cloudflare/types', { recursive: true })\" && wrangler types backend/.cloudflare/types/index.d.ts --strict-vars=false",
+    "dev:cloudflare": "npm run build && wrangler dev --env local --local --port 8787",
+    "deploy": "npm run build && wrangler deploy --env \"\"",
+    "deploy:check": "npm run build && wrangler deploy --env \"\" --dry-run",
+    "db:migrate:local": "wrangler d1 migrations apply DB --env local --local",
+    "verify:local": "npm run build && node scripts/verify-local-d1.mjs"
   },
   "devDependencies": {
     "wrangler": "4.163.0"
