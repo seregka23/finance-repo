@@ -1,5 +1,14 @@
 # AGENTS.md
 
+## Required NestJS skill
+
+Before NestJS implementation, refactoring, testing, or review, read
+[`nestjs-best-practices/SKILL.md`](../.agents/skills/nestjs-best-practices/SKILL.md)
+and the rules relevant to the task. Follow the required skill workflow in the
+root `AGENTS.md`; report exact skill and reference paths read, guidance applied,
+and any deviations. Check recommendations against this project's installed
+NestJS version and Cloudflare Worker/D1 runtime before applying them.
+
 ## NestJS
 
 This app's version of NestJS is likely newer than what you know. https://docs.nestjs.com/llms.txt indexes its documentation, with a markdown page per chapter.
