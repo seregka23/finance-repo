@@ -137,3 +137,51 @@ to proceed or would materially change the result.
 
 Summarize the outcome, meaningful changes, validation performed, and any
 remaining limitations or risks. Keep the response concise and practical.
+
+### Mandatory agent, model, reasoning, skill, time, and token report
+
+End every completed project task with a concise execution report in the user's
+language. This applies even when no subagents or skills were needed.
+
+- List the orchestrator and each subagent that actually worked on this task,
+  using its actual name/role and a short description of its contribution.
+  Do not list idle agents or configured profiles as if they participated.
+- For each participating agent, report its exact model identifier and reasoning
+  effort level when exposed by runtime or launch metadata. Distinguish requested
+  launch settings from confirmed effective settings. Do not assume a profile's
+  model was used, infer an inherited model, or guess the orchestrator's settings.
+  If these are not exposed, mark model and reasoning as unavailable. Report
+  configuration labels only, not internal reasoning content.
+- For each participating agent, identify the skills and relevant references
+  actually read and applied, using exact paths or provider identifiers. Briefly
+  state the guidance applied, or say that no skills were applicable and why.
+  A skill is not an executable tool: distinguish reading/applying its
+  instructions from running scripts bundled with it.
+- Record task and subtask start/end timestamps when the clock or runtime
+  telemetry is available. Report elapsed wall time for the whole task and
+  each participating agent. State whether waiting and tool execution are
+  included; do not call elapsed wall time active model-compute time.
+  Do not sum parallel agent durations and present that as total task duration.
+- Report per-agent input/output token usage, and cached tokens if exposed,
+  only from actual runtime usage telemetry. If a total is available, state
+  which agents it covers; label partial totals explicitly. Do not substitute
+  tool-output token counts, text length, configured token limits, or estimates
+  for model usage. Never invent token counts, duration, or costs.
+- When model, reasoning, timing, or token telemetry is unavailable, write "unavailable" in the
+  user's language and explain the limitation briefly. If timing covers only
+  part of the task, label the measured interval rather than claiming a complete
+  duration. Missing metrics must not block delivering the actual work.
+
+Use a compact table when useful, for example:
+
+| Agent | Model | Reasoning effort | Contribution | Skills/references applied | Elapsed time | Tokens (input/output) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Actual agent name | Exact model ID, or unavailable | Level, or unavailable | Work performed | Exact paths/identifiers, or none | Measured duration, or unavailable | Runtime counts, or unavailable |
+
+Below the table, state total task wall time and any metric coverage limitations.
+For a small task, one row and one short limitations sentence are sufficient.
+
+When delegating, include these reporting requirements in every assignment.
+Subagents must return their model/reasoning metadata, skill usage, measured
+timing and token usage or explicit unavailability with their results. The orchestrator consolidates those
+reports and distinguishes reported values from directly observed telemetry.
