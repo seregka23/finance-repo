@@ -41,8 +41,9 @@ appears when the signed-in person belongs to more than one household.
 
 ## Behavior and states
 
-- Before access is configured, explain that administrator setup is needed and
-  provide retry. When configured but signed out, offer provider sign-in.
+- Signed-out visitors see a public welcome with Sign in and Create account.
+  Inline forms use email/password, registration confirmation and pending/error
+  states. Sign out revokes the server session before clearing the interface.
 - A person without a household can create one. A new household contains an owner
   and no synthetic accounts, transactions, budgets or reserves. The base currency
   is RSD; the default time zone is Europe/Belgrade.
@@ -96,8 +97,9 @@ reported checks; this documentation pass inspected the source and screenshots
 and did not rerun those checks. The context launcher/detector was unavailable
 during this work, as recorded by the orchestrator.
 
-Real Cloudflare Access provider and edge configuration must be completed before
-deployment. Local signed-fixture verification does not prove real provider
-sign-in, sign-out or deployment policy. This record also does not claim
+The original issue #5 evidence above used Access fixtures. Native registration
+now replaces that provider; see [authentication](../authentication.md) and the
+[native authentication acceptance record](../verification/native-auth.md).
+This original record does not claim
 implementation or testing of all financial screens, financial workflows or
 account-specific privacy controls.

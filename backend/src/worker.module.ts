@@ -1,13 +1,7 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ApiErrorFilter } from './auth/api-error.filter.js';
-import {
-  AUTH_CONFIG,
-  AccessAuthService,
-  ApiAuthGuard,
-  AuthController,
-  type AuthConfig,
-} from './auth/auth.js';
+import { AuthService, ApiAuthGuard, AuthController } from './auth/auth.js';
 import {
   HouseholdAccessService,
   HouseholdGuard,
@@ -41,7 +35,6 @@ export class WorkerModule {
   static register(
     database: HealthDatabase,
     probeEnabled = false,
-    authConfig: AuthConfig = {},
   ): DynamicModule {
     return {
       module: WorkerModule,
@@ -54,8 +47,7 @@ export class WorkerModule {
       ],
       providers: [
         { provide: DATABASE, useValue: database },
-        { provide: AUTH_CONFIG, useValue: authConfig },
-        AccessAuthService,
+        AuthService,
         HouseholdAccessService,
         HouseholdsService,
         WorkspaceService,

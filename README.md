@@ -96,12 +96,11 @@ do not deploy or create remote resources.
 
 ## Sign-in and household settings
 
-The application uses Cloudflare Access for sign-in and D1 for live household
-membership. See [Access setup and the API contract](docs/authentication.md)
-before enabling it on a deployment. Configure `ACCESS_TEAM_DOMAIN`,
-`ACCESS_AUDIENCE` and `ACCESS_APP_ORIGIN` separately in each target environment;
-they are intentionally blank until the real Access application is configured.
-Protected APIs fail closed without configuration.
+The public site offers email/password registration and sign-in, with server-side
+sessions and live D1 household membership checks. No Cloudflare Access setup is
+required. See [authentication and rollout](docs/authentication.md), including
+migration `0005_native_auth.sql` and removing any old dashboard Access policy.
+Password recovery and email verification remain future work.
 
 Owners can create an empty household, edit settings, share an email-bound
 invitation link, cancel invitations and revoke a member. Households have up to
@@ -110,12 +109,12 @@ ownership does not make accounts private.
 
 ```sh
 npm run verify:access
+npm run verify:auth
 ```
 
-This builds the apps and tests signed identities and household workflows in an
-isolated actual Worker/local-D1 fixture. It does not contact a real identity
-provider or modify remote resources. See the
-[issue #5 validation record](docs/verification/issue-5.md).
+These build the apps and test real native registration, sessions and household
+workflows in an isolated Worker/local-D1 fixture and Chromium. They do not modify
+remote resources. See the [native authentication acceptance record](docs/verification/native-auth.md).
 
 ## Household categories
 

@@ -89,7 +89,7 @@ household changes close it. Existing settings forms keep pending controls.
 The example illustrates the response contract, not a seeded household. Counts
 include all saved rows, including archived/history rows, and are scoped to the
 household. One query executes with a live member assertion in the same D1 batch.
-The endpoint inherits signed authentication, 404 for unavailable households,
+The endpoint inherits server-session authentication, 404 for unavailable households,
 sanitized failures and `no-store`. No database migration or financial mutation
 is added.
 
@@ -105,8 +105,8 @@ filtering remain their feature issues.
 including the six routes at desktop/mobile sizes, modal keyboard behavior,
 loading/error/retry, household creation and accessibility. See the
 [acceptance record](../verification/issue-6.md) for observed results and captures.
-The provider/deployment configuration from issue #5 remains unchanged; synthetic
-signed local sessions do not verify real Cloudflare Access login.
+The original issue #6 evidence used signed Access fixtures. Current verification
+uses native accounts and sessions; see [authentication](../authentication.md).
 
 The integration team reported eight browser verification groups and eight native
 D1 groups passing. Accessibility checks reported zero WCAG A/AA violations across
