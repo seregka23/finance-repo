@@ -356,8 +356,21 @@ and [verification record](docs/verification/issue-9.md).
 
 Run `npm run verify:transactions` to build the backend and verify the production
 API against disposable local D1. Run `npm run verify:schema` to check migration
-upgrades and database constraints. Manual transaction forms follow in issue #13;
-account management follows in issue #10.
+upgrades and database constraints. Manual transaction forms follow in issue #13.
+
+## Transfers
+
+The shared transaction API supports same-currency and FX transfers with actual
+debit and credit amounts and an optional linked fee. Both principal legs and the
+fee post, change or void in one D1 batch. Available funds include reserves and
+the fee. Transfer principal is excluded from reporting; the linked fee is counted
+once. Prisma handles scoped transaction reads; atomic ledger writes use D1 batch
+because the Prisma D1 adapter does not support transactions.
+
+See the [API contract](docs/api/transfers.md),
+[database protocol](docs/database/transfers.md) and
+[verification record](docs/verification/issue-11.md).
+Run `npm run verify:transfers` for disposable local Workerd/D1 acceptance checks.
 
 ## Accounts
 

@@ -23,3 +23,49 @@ export interface TransactionRecord extends PostingInput {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface TransferFeeInput {
+  amountMinor: string;
+  categoryId: string;
+  exchangeRate: string | null;
+  exchangeRateSource: string | null;
+}
+
+export interface TransferInput {
+  type: 'transfer';
+  transactionDate: string;
+  fromAccountId: string;
+  toAccountId: string;
+  debitAmountMinor: string;
+  creditAmountMinor: string;
+  debitCurrency: Currency;
+  creditCurrency: Currency;
+  fee: TransferFeeInput | null;
+  merchant: string | null;
+  note: string | null;
+}
+
+export interface TransferFeeRecord extends TransferFeeInput {
+  id: string;
+  accountId: string;
+  currency: Currency;
+  rsdEquivalentMinor: string | null;
+}
+
+export interface TransferRecord extends Omit<TransferInput, 'fee'> {
+  id: string;
+  householdId: string;
+  fee: TransferFeeRecord | null;
+  authorMemberId: string;
+  status: 'posted' | 'void';
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FeeRecord extends Omit<TransactionRecord, 'type'> {
+  type: 'fee';
+  parentTransactionId: string;
+}
+
+export type AnyTransactionRecord = TransactionRecord | TransferRecord | FeeRecord;

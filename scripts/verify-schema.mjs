@@ -378,6 +378,7 @@ async function verify() {
           "0005_native_auth.sql",
           "0006_atomic_posting.sql",
           "0007_accounts.sql",
+          "0008_transfers.sql",
         ],
       );
       assert.deepEqual(
