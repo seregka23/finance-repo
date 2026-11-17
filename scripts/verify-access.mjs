@@ -392,11 +392,13 @@ async function verify() {
       await api(`/api/v1/households/${other.id}/members`, owner, {
         status: 404,
       });
-      await api("/api/v1/households", owner, {
-        method: "POST",
-        body: { name: "Bad", timeZone: "invalid-zone" },
-        status: 400,
-      });
+      for (const timeZone of ["invalid-zone", "+01:00"]) {
+        await api("/api/v1/households", owner, {
+          method: "POST",
+          body: { name: "Bad", timeZone },
+          status: 400,
+        });
+      }
     },
   );
   await check(

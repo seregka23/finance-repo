@@ -19,7 +19,8 @@
     "verify:schema": "node scripts/verify-schema.mjs",
     "verify:access": "npm run build && node scripts/verify-access.mjs",
     "verify:navigation": "npm run build && node scripts/verify-navigation.mjs",
-    "verify:categories": "npm run build && node scripts/verify-categories.mjs"
+    "verify:categories": "npm run build && node scripts/verify-categories.mjs",
+    "verify:money": "npm run build --prefix backend && node scripts/verify-money.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
