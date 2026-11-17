@@ -55,9 +55,18 @@ override is committed, and the standard install/build scripts do not set it.
 
 The runtime proofs above execute actual generated Prisma queries and WASM
 against SQLite/native D1 independently of that binary. Normal postinstall and
-build generation still need the real Prisma CLI environment. Cloudflare's PR
-build is the additional clean-install check; its status must be reported
-separately rather than inferred from local generation or packaging success.
+build generation still need the real Prisma CLI environment. Cloudflare is configured to build only `main`. The added GitHub Actions
+`Prisma and D1` pull-request workflow performs a normal clean install, standard
+Prisma validation/generation, full build, unit/lint checks and native disposable
+D1 verifiers without deployments or secrets.
+
+[GitHub Actions run 44107664083](https://github.com/seregka23/finance-repo/actions/runs/44107664083)
+completed successfully for runtime/CI commit `4bb5bdb`: normal `npm ci`,
+`prisma:validate`, full build/generation, mapping verification, 34 unit tests,
+lint and all three native D1 verifiers passed. It used no engine-path override.
+This supplies the normal clean-install/CLI validation missing locally; the
+workspace network restriction remains an environment limitation, not an
+unresolved build failure.
 
 ## Skills and execution reporting
 

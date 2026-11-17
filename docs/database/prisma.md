@@ -57,9 +57,8 @@ Vitest loads that same WASM compiler in Node, rather than replacing Prisma with
 a mock or a different production client.
 
 Generation uses the installed pinned Prisma CLI. The standard CLI needs access
-to Prisma's binary host during installation. This workspace currently receives
-HTTP 403 from that host; see the acceptance record for the exact local
-validation limitation. Do not add a dummy engine path to project settings.
+to Prisma's binary host during installation. The acceptance record describes a local HTTP 403
+restriction on that host and distinguishes it from the PR workflow checks. Do not add a dummy engine path to project settings.
 
 ## Existing data and migrations
 
