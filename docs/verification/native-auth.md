@@ -1,5 +1,10 @@
 # Native registration and session acceptance record
 
+**Production correction:** the original local checks below did not expose the
+deployed PBKDF2 iteration limit. Registration now uses versioned native scrypt.
+See [the production failure and fix](registration-runtime-fix.md) for actual
+Cloudflare evidence and the regression that models its cap locally.
+
 Verified on 2026-11-17 against the existing Cloudflare compatibility date and
 flags, Node 24.22.1, Wrangler 4.163.0, native Workerd, disposable local D1 and
 Chromium. No remote migration, Access policy change or deployment was performed.
