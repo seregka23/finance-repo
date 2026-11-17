@@ -1,13 +1,13 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ApiErrorFilter } from './auth/api-error.filter.js';
-import { AuthService, ApiAuthGuard, AuthController } from './auth/auth.js';
-import {
-  HouseholdAccessService,
-  HouseholdGuard,
-  HouseholdsController,
-  HouseholdsService,
-} from './households/households.js';
+import { AuthService } from './auth/auth.service.js';
+import { ApiAuthGuard } from './auth/api-auth.guard.js';
+import { AuthController } from './auth/auth.controller.js';
+import { HouseholdAccessService } from './households/household-access.service.js';
+import { HouseholdGuard } from './households/household.guard.js';
+import { HouseholdsController } from './households/households.controller.js';
+import { HouseholdsService } from './households/households.service.js';
 import { AppModule } from './app.module.js';
 import { PrismaService } from './database/prisma.service.js';
 import {
