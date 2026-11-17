@@ -358,3 +358,12 @@ Run `npm run verify:transactions` to build the backend and verify the production
 API against disposable local D1. Run `npm run verify:schema` to check migration
 upgrades and database constraints. Manual transaction forms follow in issue #13;
 account management follows in issue #10.
+
+## Accounts
+
+The Accounts page supports opening balances, ownership labels, signed balance
+adjustments, currency locking, archive/restore and movement history. See the
+[API contract](docs/api/accounts.md), [database notes](docs/database/accounts.md),
+[UI guide](docs/ui/accounts.md) and [verification](docs/verification/issue-10.md).
+Run `npm run verify:accounts` for disposable local D1 API checks after building;
+`node scripts/verify-accounts-ui.mjs` exercises the actual UI in Chromium.

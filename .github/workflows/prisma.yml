@@ -47,4 +47,5 @@ jobs:
       - run: node scripts/verify-access.mjs
       - run: node scripts/verify-money.mjs
       - run: node scripts/verify-transactions.mjs
+      - run: node scripts/verify-accounts.mjs
       - run: node scripts/verify-local-d1.mjs

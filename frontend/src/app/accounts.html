@@ -1,0 +1,246 @@
+<div class="pagehead">
+  <div>
+    <h1 tabindex="-1">Accounts</h1>
+    <p>Balances, owners, and available funds by account.</p>
+  </div>
+</div>
+@if (!api.selectedId()) {
+  <section class="panel">
+    <h2>Create a household first</h2>
+    <p class="sub">Accounts belong to a shared household.</p>
+    <a class="btn" routerLink="/settings">Go to household settings</a>
+  </section>
+} @else {
+  @if (error()) {
+    <div class="alert" role="alert">{{ error() }}</div>
+  }
+  @if (success()) {
+    <div class="notice" role="status">{{ success() }}</div>
+  }
+  @if (loading()) {
+    <p role="status">Loading accounts…</p>
+  } @else if (loadError()) {
+    <div class="alert" role="alert">{{ loadError() }}</div>
+    <button class="btn" type="button" (click)="retry()">Try again</button>
+  } @else {
+    <div class="cols">
+      <div class="stack">
+        <section class="panel" aria-labelledby="accounts-heading">
+          <h2 id="accounts-heading">Household accounts</h2>
+          <p class="sub">
+            Everyone in the household can see all accounts. Ownership is for display.
+          </p>
+          <label class="filter"
+            >Status<select class="field" [value]="status()" (change)="setStatus($event)">
+              <option value="all">All accounts</option>
+              <option value="active">Active</option>
+              <option value="archived">Archived</option>
+            </select></label
+          >
+          @if (!rows().length) {
+            <p class="empty">No accounts yet. Add your first account to get started.</p>
+          } @else if (!filtered().length) {
+            <p class="empty">No accounts match this status.</p>
+          }
+          @for (row of filtered(); track row.id) {
+            <div class="accountrow">
+              <div>
+                <button
+                  class="account-link"
+                  type="button"
+                  [disabled]="busy()"
+                  (click)="open(row)"
+                  [attr.aria-label]="'View ' + row.name"
+                >
+                  {{ row.name }}
+                </button>
+                <p>{{ row.type }} · {{ owner(row.ownerMemberId) }} · {{ row.status }}</p>
+              </div>
+              <div>
+                <p>Balance</p>
+                <strong>{{ format(row.balanceMinor, row.currency) }}</strong>
+              </div>
+              <div>
+                <p>Reserved</p>
+                <strong>{{ format(row.reservedMinor, row.currency) }}</strong>
+              </div>
+              <div>
+                <p>Available</p>
+                <strong>{{ format(row.availableMinor, row.currency) }}</strong>
+              </div>
+            </div>
+          }
+        </section>
+        @if (selected(); as row) {
+          <section class="panel" aria-labelledby="detail-heading">
+            <div class="detail-head">
+              <div>
+                <h2 id="detail-heading">{{ row.name }}</h2>
+                <p class="sub">
+                  {{ row.type }} · {{ owner(row.ownerMemberId) }} · {{ row.designation }} ·
+                  {{ row.status }}
+                </p>
+              </div>
+              <button class="btn" type="button" [disabled]="busy()" (click)="closeDetails()">
+                Close details
+              </button>
+            </div>
+            <div class="actions">
+              <button
+                class="btn"
+                type="button"
+                [disabled]="busy() || historyLoading() || row.status === 'archived'"
+                (click)="beginEdit(row)"
+              >
+                Edit account</button
+              ><button
+                class="btn"
+                type="button"
+                [disabled]="busy() || historyLoading()"
+                (click)="toggle(row)"
+              >
+                {{ row.status === 'active' ? 'Archive account' : 'Restore account' }}
+              </button>
+            </div>
+            <p class="sub">Archiving preserves the balance and history.</p>
+            <h3>History</h3>
+            @if (historyLoading()) {
+              <p role="status">Loading history…</p>
+            }
+            @if (historyError()) {
+              <div class="alert" role="alert">{{ historyError() }}</div>
+              <button class="btn" type="button" (click)="open(row)">Retry history</button>
+            }
+            @if (!historyLoading() && !historyError() && !movements().length) {
+              <p class="sub">No movements yet.</p>
+            }
+            @for (movement of movements(); track movement.id) {
+              <div class="movement">
+                <span>{{ movement.movementDate }} · {{ movement.type.replace('_', ' ') }}</span
+                ><strong>{{ format(movement.amountMinor, movement.currency) }}</strong>
+              </div>
+            }
+            @if (cursor() && !historyLoading()) {
+              <button class="btn" type="button" (click)="more()">Load more history</button>
+            }
+            @if (row.status === 'active') {
+              <h3>Record a balance change</h3>
+              <p class="sub">
+                Enter the change, not the resulting balance. Use + to increase or − to decrease the
+                balance.
+              </p>
+              <form
+                [formGroup]="adjustment"
+                (ngSubmit)="adjust(row)"
+                (input)="adjustmentReview.set(false)"
+              >
+                <label
+                  >Signed change ({{ row.currency }})<input
+                    class="field"
+                    formControlName="amount"
+                    inputmode="decimal"
+                    placeholder="e.g. +10.00 or -10.00"
+                    required
+                /></label>
+                <label
+                  >Date<input class="field" type="date" formControlName="date" required
+                /></label>
+                <button class="btn primary" type="submit" [disabled]="busy()">
+                  {{
+                    busy()
+                      ? 'Saving…'
+                      : adjustmentReview()
+                        ? 'Confirm balance change'
+                        : 'Review change'
+                  }}
+                </button>
+                @if (adjustmentReview()) {
+                  <p role="status">
+                    Review: change {{ row.name }} by {{ adjustment.controls.amount.value }}
+                    {{ row.currency }} on {{ adjustment.controls.date.value }}. Confirm to record
+                    it.
+                  </p>
+                }
+              </form>
+            }
+          </section>
+        }
+      </div>
+      <section class="panel" aria-labelledby="form-heading">
+        <h2 id="form-heading">{{ editing() ? 'Edit account' : 'Add an account' }}</h2>
+        <p class="sub">
+          {{ editing() ? 'Update account details.' : 'Set the opening balance as of a date.' }}
+        </p>
+        <form [formGroup]="form" (ngSubmit)="save()">
+          <label>Name<input class="field" formControlName="name" maxlength="100" required /></label>
+          <label
+            >Type<select class="field" formControlName="type">
+              <option value="cash">Cash</option>
+              <option value="bank">Bank</option>
+              <option value="card">Card</option>
+            </select></label
+          >
+          <label
+            >Currency<select class="field" formControlName="currency">
+              <option>RSD</option>
+              <option>EUR</option>
+              <option>RUB</option>
+              <option>USD</option>
+            </select></label
+          >
+          @if (editing() && selected()?.currencyLocked) {
+            <p class="sub">Currency cannot change after the first transaction.</p>
+          }
+          @if (editing() && !selected()?.currencyLocked) {
+            <p class="sub">
+              Changing currency keeps the same amounts. Use this only to correct the account's
+              currency.
+            </p>
+          }
+          <label
+            >Owner<select class="field" formControlName="ownerMemberId">
+              <option value="">Household</option>
+              @if (editing() && inactiveOwner(selected()?.ownerMemberId ?? null)) {
+                <option [value]="selected()!.ownerMemberId" disabled>
+                  {{ owner(selected()!.ownerMemberId) }} (inactive)
+                </option>
+              }
+              @for (member of members(); track member.id) {
+                @if (member.status === 'active') {
+                  <option [value]="member.id">{{ member.email || 'Household member' }}</option>
+                }
+              }
+            </select></label
+          >
+          <label
+            >Designation<select class="field" formControlName="designation">
+              <option value="personal">Personal</option>
+              <option value="business">Business</option>
+            </select></label
+          >
+          @if (!editing()) {
+            <label
+              >Opening balance<input
+                class="field"
+                formControlName="opening"
+                inputmode="decimal"
+                required /></label
+            ><label
+              >As of date<input class="field" type="date" formControlName="date" required
+            /></label>
+          }
+          <div class="actions">
+            <button class="btn primary" type="submit" [disabled]="busy()">
+              {{ busy() ? 'Saving…' : editing() ? 'Save changes' : 'Create account' }}
+            </button>
+            @if (editing()) {
+              <button class="btn" type="button" [disabled]="busy()" (click)="resetForm()">
+                Cancel edit
+              </button>
+            }
+          </div>
+        </form>
+      </section>
+    </div>
+  }
+}

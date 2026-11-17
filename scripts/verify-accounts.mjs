@@ -1,0 +1,815 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { createServer } from "node:net";
+import { fileURLToPath } from "node:url";
+
+const root = fileURLToPath(new URL("../", import.meta.url));
+// Keeping the fixture under backend allows Wrangler to resolve Nest dependencies.
+const temporary = await mkdtemp(
+  join(root, "backend/.cloudflare/accounts-verify-"),
+);
+const configPath = join(temporary, "wrangler.json");
+const persistence = join(temporary, "state");
+const wrangler = join(root, "node_modules/wrangler/bin/wrangler.js");
+const portProbe = createServer();
+await new Promise((resolve) => portProbe.listen(0, "127.0.0.1", resolve));
+const port = portProbe.address().port;
+await new Promise((resolve) => portProbe.close(resolve));
+const appOrigin = `http://127.0.0.1:${port}`;
+const children = new Set();
+const logs = [];
+const env = {
+  ...process.env,
+  CI: "1",
+  WRANGLER_SEND_METRICS: "false",
+  NO_COLOR: "1",
+  XDG_CONFIG_HOME: join(temporary, "cli"),
+};
+for (const key of [
+  "CLOUDFLARE_API_TOKEN",
+  "CLOUDFLARE_API_KEY",
+  "CLOUDFLARE_EMAIL",
+])
+  delete env[key];
+let server;
+let base;
+let groups = 0;
+const fixturePassword = "Fixture-password-2026!";
+const tokens = new Map();
+async function token(user) {
+  if (tokens.has(user)) return tokens.get(user);
+  const response = await fetch(base + "/api/v1/auth/register", {
+    method: "POST",
+    headers: { Origin: appOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: `${user}@example.invalid`,
+      password: fixturePassword,
+    }),
+  });
+  assert.equal(response.status, 201, await response.clone().text());
+  const setCookie = response.headers.get("set-cookie");
+  assert.match(setCookie, /HttpOnly/i);
+  assert.match(setCookie, /SameSite=Lax/i);
+  const value = setCookie.split(";")[0].slice("finance_session=".length);
+  tokens.set(user, value);
+  return value;
+}
+function launch(args) {
+  const child = spawn(process.execPath, [wrangler, ...args], {
+    cwd: root,
+    env,
+    detached: process.platform !== "win32",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  children.add(child);
+  child.once("close", () => children.delete(child));
+  let output = "",
+    stdout = "";
+  child.stdout.on("data", (d) => {
+    stdout += d;
+    output = (output + d).slice(-60000);
+  });
+  child.stderr.on("data", (d) => {
+    output = (output + d).slice(-60000);
+  });
+  return { child, output: () => output, stdout: () => stdout };
+}
+function signal(child, sig) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  try {
+    process.kill(process.platform === "win32" ? child.pid : -child.pid, sig);
+  } catch (e) {
+    if (e.code !== "ESRCH") throw e;
+  }
+}
+async function stop(proc) {
+  if (!proc || proc.child.exitCode !== null || proc.child.signalCode !== null)
+    return;
+  const done = new Promise((resolve) => proc.child.once("close", resolve));
+  signal(proc.child, "SIGTERM");
+  const timer = setTimeout(() => signal(proc.child, "SIGKILL"), 3000);
+  await done;
+  clearTimeout(timer);
+}
+async function command(args) {
+  const proc = launch(args);
+  const timer = setTimeout(() => signal(proc.child, "SIGKILL"), 60000);
+  try {
+    const code = await new Promise((resolve, reject) => {
+      proc.child.once("error", reject);
+      proc.child.once("close", resolve);
+    });
+    logs.push(proc.output());
+    assert.equal(code, 0, proc.output());
+    return proc.stdout();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+const common = ["--config", configPath, "--local", "--persist-to", persistence];
+async function query(sql) {
+  if (base) {
+    const response = await fetch(base + "/_verification/sql", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sql }),
+    });
+    const data = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(data));
+    return data.results;
+  }
+  const output = await command([
+    "d1",
+    "execute",
+    "DB",
+    ...common,
+    "--command",
+    sql,
+    "--json",
+  ]);
+  return JSON.parse(output)[0].results;
+}
+async function check(name, fn) {
+  await fn();
+  groups++;
+  console.log(`PASS ${name}`);
+}
+async function api(
+  path,
+  sessionToken,
+  { method = "GET", body, status = 200, origin = appOrigin, key } = {},
+) {
+  const headers = {};
+  if (key !== undefined) headers["Idempotency-Key"] = key;
+  if (sessionToken) headers.Cookie = `finance_session=${sessionToken}`;
+  if (!["GET", "HEAD"].includes(method) && origin !== null)
+    headers.Origin = origin;
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const response = await fetch(base + path, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(15000),
+  });
+  const value = response.status === 204 ? undefined : await response.json();
+  assert.equal(
+    response.status,
+    status,
+    `${method} ${path}: ${JSON.stringify(value)}`,
+  );
+  if (path.startsWith("/api/v1/"))
+    assert.equal(response.headers.get("cache-control"), "no-store");
+  return value;
+}
+async function prepare() {
+  // SQL diagnostics exist only in this disposable local test Worker. All
+  // financial requests pass through the production native-auth NestJS API.
+  const fixture = `
+import 'reflect-metadata';
+import {env} from 'cloudflare:workers';
+import worker from '../../dist/worker.js';
+import {AuthService} from '../../dist/auth/auth.js';
+import {PrismaService} from '../../dist/database/prisma.service.js';
+import {HouseholdAccessService} from '../../dist/households/households.js';
+import {AccountsRepository} from '../../dist/accounts/accounts.repository.js';
+import {AccountsService} from '../../dist/accounts/accounts.service.js';
+const prisma=new PrismaService(env.DB);
+const auth=new AuthService(env.DB,prisma);
+export default {async fetch(request, bindings, context) {
+  const url = new URL(request.url);
+  if(url.pathname === '/_verification/sql' && request.method === 'POST') {
+    const {sql} = await request.json();
+    return Response.json(await env.DB.prepare(sql).all());
+  }
+  if(url.pathname === '/_verification/revoked-in-batch' && request.method === 'POST') {
+    try {
+      const value=(request.headers.get('cookie')||'').split(';').map(v=>v.trim()).find(v=>v.startsWith('finance_session='))?.slice('finance_session='.length);
+      const identity=await auth.verify(value||'');
+      const {householdId,body}=await request.json();
+      // Model revocation after the HTTP guard's preflight. It must be checked
+      // again inside the same batch that would make financial changes.
+      await new HouseholdAccessService(env.DB,prisma).get(identity,householdId);
+      const wrapped={prepare:sql=>env.DB.prepare(sql),batch:statements=>env.DB.batch([
+        env.DB.prepare("UPDATE household_members SET status='revoked' WHERE household_id=? AND identity_subject=?").bind(householdId,identity.subject),...statements
+      ])};
+      const result=await new AccountsService(new AccountsRepository(wrapped)).create(identity,householdId,body);
+      return Response.json(result,{status:201});
+    } catch(e) {return Response.json(e.getResponse?.()||{error:{code:'FIXTURE_ERROR'}},{status:e.getStatus?.()||500});}
+  }
+  return worker.fetch(request,bindings,context);
+}};
+`;
+  await writeFile(join(temporary, "worker.mjs"), fixture);
+  const aliases = {
+    "class-validator": "backend/cloudflare/missing-optional-package.mjs",
+    "class-transformer": "backend/cloudflare/missing-optional-package.mjs",
+    "@nestjs/microservices": "backend/cloudflare/missing-optional-package.mjs",
+    "@nestjs/microservices/microservices-module.js":
+      "backend/cloudflare/missing-optional-package.mjs",
+    "@nestjs/websockets/socket-module.js":
+      "backend/cloudflare/missing-optional-package.mjs",
+  };
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      name: "finance-accounts-verification",
+      main: join(temporary, "worker.mjs"),
+      compatibility_date: "2026-11-16",
+      compatibility_flags: [
+        "nodejs_compat",
+        "enable_nodejs_http_server_modules",
+      ],
+      assets: {
+        directory: join(root, "frontend/dist/frontend/browser"),
+        binding: "ASSETS",
+        not_found_handling: "single-page-application",
+        run_worker_first: ["/api/*", "/_verification/*"],
+      },
+      alias: Object.fromEntries(
+        Object.entries(aliases).map(([k, v]) => [k, join(root, v)]),
+      ),
+      d1_databases: [
+        {
+          binding: "DB",
+          database_name: "disposable-accounts-verification",
+          database_id: randomUUID(),
+          migrations_dir: join(root, "backend/migrations"),
+        },
+      ],
+    }),
+  );
+  await command(["d1", "migrations", "apply", "DB", ...common]);
+  server = launch([
+    "dev",
+    ...common,
+    "--ip",
+    "127.0.0.1",
+    "--port",
+    String(port),
+    "--inspector-port",
+    "0",
+  ]);
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    const match = server
+      .output()
+      .match(/Ready on https?:\/\/127\.0\.0\.1:(\d+)/i);
+    if (match) {
+      base = `http://127.0.0.1:${match[1]}`;
+      return;
+    }
+    if (server.child.exitCode !== null) throw new Error(server.output());
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Worker startup timed out");
+}
+const quote = (value) => `'${String(value).replaceAll("'", "''")}'`;
+async function balance(accountId) {
+  return (
+    await query(
+      `SELECT CAST(COALESCE(SUM(amount_minor),0) AS TEXT) AS amount FROM account_movements WHERE account_id=${quote(accountId)}`,
+    )
+  )[0].amount;
+}
+async function counts() {
+  const tables = [
+    "accounts",
+    "transactions",
+    "account_movements",
+    "audit_events",
+    "idempotency_keys",
+    "posting_requests",
+    "posting_details",
+  ];
+  return Object.fromEntries(
+    await Promise.all(
+      tables.map(async (table) => [
+        table,
+        (await query(`SELECT count(*) AS n FROM ${table}`))[0].n,
+      ]),
+    ),
+  );
+}
+async function verify() {
+  await prepare();
+  const owner = await token("owner"),
+    member = await token("member"),
+    stranger = await token("stranger");
+  const household = await api("/api/v1/households", owner, {
+    method: "POST",
+    body: { name: "Account verification" },
+    status: 201,
+  });
+  const other = await api("/api/v1/households", stranger, {
+    method: "POST",
+    body: { name: "Private household" },
+    status: 201,
+  });
+  const h = household.id,
+    basePath = `/api/v1/households/${h}/accounts`;
+  const invitation = await api(`/api/v1/households/${h}/invitations`, owner, {
+    method: "POST",
+    body: { email: "member@example.invalid" },
+    status: 201,
+  });
+  await api("/api/v1/invitations/accept", member, {
+    method: "POST",
+    body: { token: invitation.token },
+    status: 201,
+  });
+  const members = (await api(`/api/v1/households/${h}/members`, owner)).members;
+  const memberId = members.find((m) => m.email === "member@example.invalid").id;
+  const otherMemberId = (
+    await api(`/api/v1/households/${other.id}/members`, stranger)
+  ).members[0].id;
+  const category = await api(`/api/v1/households/${h}/categories`, owner, {
+    method: "POST",
+    body: { name: "Account test expense", type: "expense" },
+    status: 201,
+  });
+  const input = (
+    name = "Test cash",
+    openingBalanceMinor = "100000",
+    extra = {},
+  ) => ({
+    name,
+    type: "cash",
+    currency: "RSD",
+    ownerMemberId: null,
+    designation: "personal",
+    openingBalanceMinor,
+    openingDate: "2026-01-01",
+    ...extra,
+  });
+  const meta = (a) => ({
+    name: a.name,
+    type: a.type,
+    currency: a.currency,
+    ownerMemberId: a.ownerMemberId,
+    designation: a.designation,
+  });
+  const create = (body = input(), status = 201, user = owner) =>
+    api(basePath, user, { method: "POST", body, status });
+  const get = (a, user = owner) => api(`${basePath}/${a.id}`, user);
+  const update = (a, extra = {}, status = 200, user = owner) =>
+    api(`${basePath}/${a.id}`, user, {
+      method: "PATCH",
+      body: { ...meta(a), ...extra, version: a.version },
+      status,
+    });
+  const adjust = (a, amountMinor, status = 201, user = owner) =>
+    api(`${basePath}/${a.id}/adjustments`, user, {
+      method: "POST",
+      body: { amountMinor, movementDate: "2026-02-01", version: a.version },
+      status,
+    });
+  const setStatus = (a, status, expected = 200, user = owner) =>
+    api(`${basePath}/${a.id}/${status}`, user, {
+      method: "POST",
+      body: { version: a.version },
+      status: expected,
+    });
+  const history = (a, query = "", user = owner) =>
+    api(`${basePath}/${a.id}/movements${query}`, user);
+  const postExpense = (a, amountMinor = "1000", status = 201) =>
+    api(`/api/v1/households/${h}/transactions`, owner, {
+      method: "POST",
+      key: randomUUID(),
+      status,
+      body: {
+        type: "expense",
+        transactionDate: "2026-02-02",
+        accountId: a.id,
+        categoryId: category.id,
+        amountMinor,
+        currency: a.currency,
+        exchangeRate: a.currency === "RSD" ? null : "100",
+        exchangeRateSource: a.currency === "RSD" ? null : "manual",
+        merchant: null,
+        note: null,
+      },
+    });
+  let first;
+  await check(
+    "new household creates its first account and both members see display-owned accounts",
+    async () => {
+      assert.deepEqual((await api(basePath, owner)).accounts, []);
+      first = await create(
+        input("Personal bank", "100000", {
+          type: "bank",
+          ownerMemberId: memberId,
+        }),
+      );
+      assert.equal(first.version, 1);
+      assert.equal(first.currencyLocked, false);
+      assert.equal(first.balanceMinor, "100000");
+      assert.equal(first.reservedMinor, "0");
+      assert.equal(first.availableMinor, "100000");
+      assert.deepEqual(await get(first, member), first);
+      assert.equal((await history(first)).movements[0].type, "opening_balance");
+      const capability = await api(`/api/v1/households/${h}/workspace`, owner);
+      assert.equal(capability.capabilities.accounts, true);
+      assert.equal(capability.counts.accounts, 1);
+    },
+  );
+  await check(
+    "opening balances and signed reconciliation affect balances without income/expense records",
+    async () => {
+      let a = await adjust(first, "500");
+      a = await adjust(a, "-200");
+      assert.equal(a.balanceMinor, "100300");
+      assert.equal(a.version, 3);
+      assert.equal((await history(a)).movements.length, 3);
+      assert.equal(
+        (
+          await query(
+            `SELECT count(*) AS n FROM transactions WHERE household_id=${quote(h)}`,
+          )
+        )[0].n,
+        0,
+      );
+      const rows = await query(
+        `SELECT type,CAST(SUM(amount_minor) AS TEXT) AS amount FROM account_movements WHERE account_id=${quote(a.id)} GROUP BY type ORDER BY type`,
+      );
+      assert.deepEqual(rows, [
+        { type: "adjustment", amount: "300" },
+        { type: "opening_balance", amount: "100000" },
+      ]);
+      first = a;
+    },
+  );
+  await check(
+    "unlocked currency correction propagates opening/adjustment currency atomically",
+    async () => {
+      first = await update(first, { currency: "EUR", name: "Corrected bank" });
+      assert.equal(first.currency, "EUR");
+      assert.equal(first.balanceMinor, "100300");
+      assert.equal(first.currencyLocked, false);
+      for (const m of (await history(first)).movements)
+        assert.equal(m.currency, "EUR");
+      assert.deepEqual(await query("PRAGMA foreign_key_check"), []);
+      first = await update(first, { currency: "RSD" });
+    },
+  );
+  await check(
+    "first transaction locks currency permanently even after void, metadata remains editable",
+    async () => {
+      const t = await postExpense(first, "300");
+      first = await get(first);
+      assert.equal(first.currencyLocked, true);
+      assert.equal(first.balanceMinor, "100000");
+      await update(first, { currency: "EUR" }, 409);
+      await api(`/api/v1/households/${h}/transactions/${t.id}/void`, owner, {
+        method: "POST",
+        body: { version: t.version },
+      });
+      first = await get(first);
+      assert.equal(first.currencyLocked, true);
+      assert.equal(first.balanceMinor, "100300");
+      await update(first, { currency: "USD" }, 409);
+      first = await update(
+        first,
+        { name: "Shared bank", ownerMemberId: null, designation: "business" },
+        200,
+        member,
+      );
+      assert.equal(first.name, "Shared bank");
+      assert.equal(first.ownerMemberId, null);
+    },
+  );
+  await check(
+    "archive preserves balances/history, active options exclude archived accounts and restore works",
+    async () => {
+      const oldHistory = await history(first),
+        oldBalance = first.balanceMinor;
+      first = await setStatus(first, "archive");
+      assert.equal(first.status, "archived");
+      assert.equal(first.balanceMinor, oldBalance);
+      assert.deepEqual(await history(first), oldHistory);
+      assert(
+        !(await api(basePath + "?status=active", owner)).accounts.some(
+          (a) => a.id === first.id,
+        ),
+      );
+      assert(
+        (await api(basePath + "?status=archived", member)).accounts.some(
+          (a) => a.id === first.id,
+        ),
+      );
+      await adjust(first, "1", 409);
+      await update(first, { name: "No" }, 409);
+      await postExpense(first, "1", 409);
+      first = await setStatus(first, "restore");
+      assert.equal(first.status, "active");
+    },
+  );
+  await check(
+    "all account types/currencies, zero openings and safe integer bounds retain exact values",
+    async () => {
+      for (const [i, currency] of ["RSD", "EUR", "RUB", "USD"].entries()) {
+        const a = await create(
+          input("Zero " + currency, "0", {
+            type: ["cash", "bank", "card"][i % 3],
+            currency,
+          }),
+        );
+        assert.equal(a.balanceMinor, "0");
+        assert.equal(a.currency, currency);
+      }
+      const max = await create(input("Maximum", "9007199254740991"));
+      await adjust(max, "1", 409);
+      assert.equal((await get(max)).balanceMinor, "9007199254740991");
+      const reduced = await adjust(max, "-1");
+      assert.equal(reduced.balanceMinor, "9007199254740990");
+    },
+  );
+  await check(
+    "unauthorized/cross-household/invalid owners and invalid input retain no state",
+    async () => {
+      const before = await counts();
+      await api(basePath, null, { method: "POST", body: input(), status: 401 });
+      await create(input(), 404, stranger);
+      await create(
+        input("Bad owner", "0", { ownerMemberId: otherMemberId }),
+        409,
+      );
+      await api(`${basePath}/${first.id}`, stranger, { status: 404 });
+      await api(
+        `/api/v1/households/${other.id}/accounts/${first.id}/movements`,
+        stranger,
+        { status: 404 },
+      );
+      for (const extra of [
+        { openingBalanceMinor: "-1" },
+        { openingBalanceMinor: 1 },
+        { openingBalanceMinor: "9007199254740992" },
+        { openingDate: "2026-02-29" },
+        { type: ["cash"] },
+        { currency: "GBP" },
+        { name: "" },
+        { unexpected: true },
+      ])
+        await create(input("Invalid", "0", extra), 400);
+      await api(`${basePath}/${first.id}/adjustments`, owner, {
+        method: "POST",
+        body: {
+          amountMinor: "0",
+          movementDate: "2026-02-01",
+          version: first.version,
+        },
+        status: 400,
+      });
+      assert.deepEqual(await counts(), before);
+    },
+  );
+  await check(
+    "versioned concurrent reconciliation posts once and stale metadata/status versions conflict",
+    async () => {
+      const a = await create(input("Concurrent", "100000"));
+      const responses = await Promise.all(
+        [1, 2].map(() =>
+          fetch(base + basePath + "/" + a.id + "/adjustments", {
+            method: "POST",
+            headers: {
+              Origin: appOrigin,
+              Cookie: `finance_session=${owner}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              amountMinor: "-80000",
+              movementDate: "2026-02-01",
+              version: 1,
+            }),
+          }),
+        ),
+      );
+      assert.deepEqual(responses.map((r) => r.status).sort(), [201, 409]);
+      assert.equal((await get(a)).balanceMinor, "20000");
+      const before = await counts();
+      await update(a, { name: "stale" }, 409);
+      await setStatus(a, "archive", 409);
+      assert.deepEqual(await counts(), before);
+    },
+  );
+  await check(
+    "competing adjustment/expense batches use current available funds and reserves",
+    async () => {
+      const a = await create(input("Balance race", "100000"));
+      const txBody = {
+        type: "expense",
+        transactionDate: "2026-02-02",
+        accountId: a.id,
+        categoryId: category.id,
+        amountMinor: "80000",
+        currency: "RSD",
+        merchant: null,
+        note: null,
+        exchangeRate: null,
+        exchangeRateSource: null,
+      };
+      const headers = {
+        Origin: appOrigin,
+        Cookie: `finance_session=${owner}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": randomUUID(),
+      };
+      const responses = await Promise.all([
+        fetch(base + basePath + "/" + a.id + "/adjustments", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            amountMinor: "-80000",
+            movementDate: "2026-02-01",
+            version: a.version,
+          }),
+        }),
+        fetch(base + `/api/v1/households/${h}/transactions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(txBody),
+        }),
+      ]);
+      assert.deepEqual(responses.map((r) => r.status).sort(), [201, 409]);
+      assert.equal((await get(a)).balanceMinor, "20000");
+      const r = await create(input("Reserved", "100000"));
+      await query(
+        `INSERT INTO reserves(id,household_id,account_id,name,created_at,updated_at) VALUES ('reserve',${quote(h)},${quote(r.id)},'Reserve','2026-01-01','2026-01-01')`,
+      );
+      await query(
+        `INSERT INTO reserve_movements(id,household_id,reserve_id,account_id,type,movement_date,amount_minor,created_at) VALUES ('allocation',${quote(h)},'reserve',${quote(r.id)},'allocation','2026-01-01',70000,'2026-01-01')`,
+      );
+      const reserved = await get(r);
+      assert.equal(reserved.reservedMinor, "70000");
+      assert.equal(reserved.availableMinor, "30000");
+      await adjust(reserved, "-40000", 409);
+      await update(reserved, { currency: "EUR" }, 409);
+    },
+  );
+  await check(
+    "currency edit racing the first transaction has one safe winner",
+    async () => {
+      const a = await create(input("Currency race", "100000"));
+      const headers = {
+        Origin: appOrigin,
+        Cookie: `finance_session=${owner}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": randomUUID(),
+      };
+      const expenseBody = {
+        type: "expense",
+        transactionDate: "2026-02-02",
+        accountId: a.id,
+        categoryId: category.id,
+        amountMinor: "1000",
+        currency: "RSD",
+        merchant: null,
+        note: null,
+        exchangeRate: null,
+        exchangeRateSource: null,
+      };
+      const responses = await Promise.all([
+        fetch(base + basePath + "/" + a.id, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ ...meta(a), currency: "EUR", version: 1 }),
+        }),
+        fetch(base + `/api/v1/households/${h}/transactions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(expenseBody),
+        }),
+      ]);
+      assert.equal(responses.filter((r) => r.status === 409).length, 1);
+      assert.equal(responses.filter((r) => r.ok).length, 1);
+      const saved = await get(a);
+      assert.equal(saved.currencyLocked, saved.currency === "RSD");
+      for (const m of (await history(saved)).movements)
+        assert.equal(m.currency, saved.currency);
+      assert.deepEqual(await query("PRAGMA foreign_key_check"), []);
+    },
+  );
+  await check(
+    "injected failures and suppressed required writes roll back account, movement, version and audit",
+    async () => {
+      const a = await create(input("Rollback", "100000"));
+      for (const table of ["account_movements", "audit_events"]) {
+        const before = await counts();
+        await query(
+          `CREATE TRIGGER fixture_failure BEFORE INSERT ON ${table} BEGIN SELECT RAISE(ABORT,'fixture_failure'); END`,
+        );
+        await create(input("Failed"), 503);
+        await adjust(a, "1", 503);
+        assert.deepEqual(await counts(), before);
+        assert.deepEqual(await get(a), a);
+        await query("DROP TRIGGER fixture_failure");
+      }
+      await query(
+        "CREATE TRIGGER fixture_ignore BEFORE UPDATE ON accounts BEGIN SELECT RAISE(IGNORE); END",
+      );
+      const before = await counts();
+      await update(a, { name: "ignored" }, 503);
+      await adjust(a, "1", 503);
+      await setStatus(a, "archive", 503);
+      assert.deepEqual(await counts(), before);
+      assert.deepEqual(await get(a), a);
+      await query("DROP TRIGGER fixture_ignore");
+    },
+  );
+  await check(
+    "currency lock migration recovers voided or moved legacy transaction audit history",
+    async () => {
+      const legacy = [];
+      for (const label of ["original", "intermediate", "final"])
+        legacy.push(await create(input("Legacy " + label, "0")));
+      const transactionId = randomUUID();
+      const actor = members.find((m) => m.role === "owner").id;
+      await query(
+        `INSERT INTO transactions(id,household_id,type,transaction_date,category_id,author_member_id,status,created_at,updated_at) VALUES (${quote(transactionId)},${quote(h)},'expense','2026-01-01',${quote(category.id)},${quote(actor)},'void','2026-01-01','2026-01-01')`,
+      );
+      await query(
+        `INSERT INTO audit_events(id,household_id,actor_member_id,action,transaction_id,details_json,created_at) VALUES (${quote(randomUUID())},${quote(h)},${quote(actor)},'transaction.edited',${quote(transactionId)},json_object('accountId',${quote(legacy[0].id)},'before',json_object('accountId',${quote(legacy[1].id)}),'after',json_object('accountId',${quote(legacy[2].id)})),'2026-01-01')`,
+      );
+      const { readFile } = await import("node:fs/promises");
+      const migration = await readFile(
+        join(root, "backend/migrations/0007_accounts.sql"),
+        "utf8",
+      );
+      const backfill = migration.match(
+        /^UPDATE accounts SET currency_locked=1 WHERE[^\n]*;/m,
+      )?.[0];
+      assert.ok(
+        backfill,
+        "Currency-lock backfill must remain available for verification",
+      );
+      await query(backfill);
+      for (const a of legacy) {
+        const locked = await get(a);
+        assert.equal(locked.currencyLocked, true);
+        await update(locked, { currency: "EUR" }, 409);
+      }
+    },
+  );
+  await check(
+    "movement cursors are bounded and live membership is rechecked inside a write batch",
+    async () => {
+      let a = await create(input("Pages", "0"));
+      for (let n = 0; n < 4; n++) a = await adjust(a, "1");
+      const seen = new Set();
+      let cursor;
+      do {
+        const p = await history(
+          a,
+          "?limit=2" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""),
+        );
+        for (const m of p.movements) {
+          assert(!seen.has(m.id));
+          seen.add(m.id);
+        }
+        cursor = p.nextCursor;
+      } while (cursor);
+      assert.equal(seen.size, 5);
+      await api(`${basePath}/${a.id}/movements?cursor=invalid`, owner, {
+        status: 400,
+      });
+      const before = await counts();
+      await api("/_verification/revoked-in-batch", member, {
+        method: "POST",
+        body: { householdId: h, body: input("Revoked") },
+        status: 404,
+      });
+      assert.deepEqual(await counts(), before);
+      await query(
+        `UPDATE household_members SET status='revoked' WHERE id=${quote(memberId)}`,
+      );
+      await create(input("No access"), 404, member);
+      await api(basePath, member, { status: 404 });
+      assert.deepEqual(await query("PRAGMA foreign_key_check"), []);
+    },
+  );
+  console.log(
+    `Accounts verification passed (${groups} groups; production API, native Workerd and disposable D1).`,
+  );
+}
+async function cleanup() {
+  await Promise.all([...children].map((child) => stop({ child })));
+  await rm(temporary, { recursive: true, force: true });
+}
+for (const [name, code] of [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+])
+  process.once(name, () => {
+    void cleanup().finally(() => process.exit(code));
+  });
+try {
+  await verify();
+} catch (error) {
+  console.error(error.stack || error);
+  if (server) console.error(server.output());
+  process.exitCode = 1;
+} finally {
+  await cleanup();
+}

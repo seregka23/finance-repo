@@ -597,9 +597,14 @@ async function verify() {
       };
       const summary = await api(path, owner);
       assert.deepEqual(summary.counts, empty);
-      assert.ok(
-        Object.values(summary.capabilities).every((value) => value === false),
-      );
+      assert.deepEqual(summary.capabilities, {
+        accounts: true,
+        transactions: false,
+        imports: false,
+        budgets: false,
+        reserves: false,
+        reports: false,
+      });
       assert.deepEqual((await api(path, member)).counts, empty);
       await api(path, stranger, { status: 404 });
       await api(path, null, { status: 401 });

@@ -53,6 +53,8 @@ model Account {
   currency String
   ownerMemberId String? @map("owner_member_id")
   designation String
+  version BigInt @default(1)
+  currencyLocked Int @default(0) @map("currency_locked")
   status String @default("active")
   createdAt String @map("created_at")
   updatedAt String @map("updated_at")

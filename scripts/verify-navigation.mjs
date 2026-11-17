@@ -198,8 +198,8 @@ async function run() {
           if (name === "Accounts")
             assert.ok(
               await page
-                .getByRole("button", { name: "Add account", exact: true })
-                .isDisabled(),
+                .getByRole("button", { name: "Create account", exact: true })
+                .isEnabled(),
             );
           if (name === "Budgets")
             assert.ok(
