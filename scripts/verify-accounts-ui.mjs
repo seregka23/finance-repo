@@ -65,7 +65,10 @@ try {
     ["desktop", 1440, 1000],
     ["mobile", 390, 844],
   ]) {
-    const context = await browser.newContext({ viewport: { width, height } });
+    const context = await browser.newContext({
+      locale: "en-US",
+      viewport: { width, height },
+    });
     const page = await context.newPage();
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(base + "/_verification/sign-in/owner");
@@ -129,7 +132,7 @@ try {
           .getByRole("button", { name: "View Browser cash", exact: true })
           .waitFor();
         await page
-          .getByText("2026-01-01 · opening balance", { exact: true })
+          .getByText("Jan 1, 2026 · opening_balance", { exact: true })
           .waitFor();
         assert.ok(
           (await page.locator(".accountrow").textContent()).includes(
@@ -166,7 +169,7 @@ try {
           .click();
         assert.equal((await adjusted).status(), 201);
         await page
-          .getByText("2026-02-01 · adjustment", { exact: true })
+          .getByText("Feb 1, 2026 · adjustment", { exact: true })
           .waitFor();
         assert.ok(
           (await page.locator(".accountrow").textContent()).includes(
@@ -228,7 +231,7 @@ try {
           .getByRole("button", { name: "View Renamed cash", exact: true })
           .click();
         await page
-          .getByText("2026-02-02 · transaction", { exact: true })
+          .getByText("Feb 2, 2026 · transaction", { exact: true })
           .waitFor();
         await page
           .getByRole("button", { name: "Edit account", exact: true })
@@ -265,7 +268,7 @@ try {
           .getByRole("button", { name: "View Renamed cash", exact: true })
           .waitFor();
         await page
-          .getByText("2026-01-01 · opening balance", { exact: true })
+          .getByText("Jan 1, 2026 · opening_balance", { exact: true })
           .waitFor();
         await axe(page);
         await page.screenshot({
@@ -288,7 +291,7 @@ try {
           .getByRole("button", { name: "View Renamed cash", exact: true })
           .click();
         await page
-          .getByText("2026-02-01 · adjustment", { exact: true })
+          .getByText("Feb 1, 2026 · adjustment", { exact: true })
           .waitFor();
         await axe(page);
         assert.ok(

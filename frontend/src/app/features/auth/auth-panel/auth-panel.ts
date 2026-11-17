@@ -1,6 +1,6 @@
-import { Localization } from '../localization';
+import { Localization } from '../../../core/i18n/localization';
 import { Component, inject, input, signal } from '@angular/core';
-import { Api, ApiError } from '../api';
+import { Api, ApiError } from '../../../core/api';
 
 @Component({
   selector: 'app-auth-panel',

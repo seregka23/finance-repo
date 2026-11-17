@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { vi } from 'vitest';
-import { Api } from './api';
+import { Api } from '../../core/api';
 import { Categories } from './categories';
 import { CategoriesService, Category } from './categories.service';
 

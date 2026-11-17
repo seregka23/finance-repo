@@ -1,7 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { Localization, ru, sr } from './localization';
-import { decimalToMinor, formatCalendarDate, formatMinor } from './accounts.service';
+import { Localization } from './localization';
+import { ru } from './ru-catalog';
+import { sr } from './sr-catalog';
+import {
+  decimalToMinor,
+  formatCalendarDate,
+  formatMinor,
+} from '../../shared/formatters/formatters';
 
 describe('runtime localization', () => {
   afterEach(() => {
@@ -70,7 +76,7 @@ describe('localized authentication', () => {
     TestBed.resetTestingModule();
   });
   it('updates an existing validation error and document title on language change', async () => {
-    const { App } = await import('./app');
+    const { App } = await import('../../app');
     const { provideRouter } = await import('@angular/router');
     localStorage.setItem('family-finance-language', 'en');
     vi.spyOn(globalThis, 'fetch').mockImplementation(
