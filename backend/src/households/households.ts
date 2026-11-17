@@ -17,6 +17,7 @@ import type { AuthRequest, Identity } from '../auth/auth.js';
 import { apiError, unavailable } from '../auth/auth.js';
 import { DATABASE } from '../health.controller.js';
 import { validateTimeZone } from '../finance/calendar.js';
+import { PrismaService } from '../database/prisma.service.js';
 
 export interface Database {
   prepare(sql: string): D1PreparedStatement;
@@ -114,17 +115,34 @@ interface Household {
 }
 @Injectable()
 export class HouseholdAccessService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly prisma: PrismaService,
+  ) {}
   async get(identity: Identity, id: string): Promise<Household> {
     try {
-      const row = await this.db
-        .prepare(
-          `SELECT h.id, h.name, h.base_currency AS baseCurrency, h.time_zone AS timeZone, m.role, m.id AS memberId FROM households h JOIN household_members m ON m.household_id=h.id WHERE h.id=? AND h.status='active' AND m.identity_subject=? AND m.status='active'`,
-        )
-        .bind(id, identity.subject)
-        .first<Household>();
+      const row = await this.prisma.householdMember.findFirst({
+        where: {
+          householdId: id,
+          identitySubject: identity.subject,
+          status: 'active',
+          household: { status: 'active' },
+        },
+        select: {
+          id: true,
+          role: true,
+          household: {
+            select: {
+              id: true,
+              name: true,
+              baseCurrency: true,
+              timeZone: true,
+            },
+          },
+        },
+      });
       if (!row) throw notFound();
-      return row;
+      return { ...row.household, role: row.role, memberId: row.id };
     } catch (e) {
       if (e instanceof Error && 'getStatus' in e) throw e;
       return dbError(e);
@@ -137,6 +155,8 @@ export class HouseholdAccessService {
     statements: D1PreparedStatement[],
   ): Promise<D1Result[]> {
     try {
+      // The access assertion and dependent statements must share D1's atomic
+      // batch. Prisma's D1 adapter does not support transactions.
       return await this.db.batch([
         this.db
           .prepare(
@@ -172,16 +192,38 @@ export class HouseholdsService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly access: HouseholdAccessService,
+    private readonly prisma: PrismaService,
   ) {}
   async session(identity: Identity) {
     try {
-      const rows = await this.db
-        .prepare(
-          `SELECT h.id,h.name,h.base_currency AS baseCurrency,h.time_zone AS timeZone,m.role,m.id AS memberId FROM households h JOIN household_members m ON m.household_id=h.id WHERE m.identity_subject=? AND m.status='active' AND h.status='active' ORDER BY h.created_at,h.id`,
-        )
-        .bind(identity.subject)
-        .all<Household>();
-      return { user: { email: identity.email }, households: rows.results };
+      const rows = await this.prisma.householdMember.findMany({
+        where: {
+          identitySubject: identity.subject,
+          status: 'active',
+          household: { status: 'active' },
+        },
+        orderBy: [{ household: { createdAt: 'asc' } }, { householdId: 'asc' }],
+        select: {
+          id: true,
+          role: true,
+          household: {
+            select: {
+              id: true,
+              name: true,
+              baseCurrency: true,
+              timeZone: true,
+            },
+          },
+        },
+      });
+      return {
+        user: { email: identity.email },
+        households: rows.map((row) => ({
+          ...row.household,
+          role: row.role,
+          memberId: row.id,
+        })),
+      };
     } catch (e) {
       return dbError(e);
     }

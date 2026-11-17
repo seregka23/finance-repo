@@ -9,6 +9,7 @@ import {
   HouseholdsService,
 } from './households/households.js';
 import { AppModule } from './app.module.js';
+import { PrismaService } from './database/prisma.service.js';
 import {
   CategoriesController,
   CategoryService,
@@ -21,21 +22,14 @@ import {
   InfrastructureProbeController,
   InfrastructureProbeService,
 } from './infrastructure-probe.controller.js';
-import {
-  DATABASE,
-  HealthController,
-  HealthDatabase,
-} from './health.controller.js';
+import { DATABASE, HealthController } from './health.controller.js';
 
 @Module({
   imports: [AppModule],
   controllers: [HealthController],
 })
 export class WorkerModule {
-  static register(
-    database: HealthDatabase,
-    probeEnabled = false,
-  ): DynamicModule {
+  static register(database: D1Database, probeEnabled = false): DynamicModule {
     return {
       module: WorkerModule,
       controllers: [
@@ -47,6 +41,7 @@ export class WorkerModule {
       ],
       providers: [
         { provide: DATABASE, useValue: database },
+        PrismaService,
         AuthService,
         HouseholdAccessService,
         HouseholdsService,

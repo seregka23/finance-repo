@@ -265,6 +265,18 @@ npm --prefix frontend start
 NestJS listens on port 3000 and Angular on port 4200. Angular's development proxy
 forwards `/api/**` to port 3000. The D1 health route belongs to the Worker runtime.
 
+## Prisma database access
+
+The backend uses Prisma's D1 adapter for typed user/session, household and probe
+queries. Atomic writes and authorization-dependent reads continue to use native
+D1 batches. Existing SQL migrations and financial precision rules are preserved.
+See [Prisma setup and boundaries](docs/database/prisma.md) and the
+[acceptance record](docs/verification/prisma.md).
+
+```sh
+npm run verify:prisma
+```
+
 ## Money and household-month primitives
 
 The backend provides exact string-money parsing, recorded FX valuation, refund

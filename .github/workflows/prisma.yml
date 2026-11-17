@@ -1,0 +1,44 @@
+name: Prisma and D1
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'wrangler.jsonc'
+      - '.github/workflows/prisma.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prisma-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
+      - run: npm ci
+      - run: npm --prefix backend run prisma:validate
+      - run: npm run build
+      - run: npm run verify:prisma
+      - run: npm --prefix backend test
+      - run: npm --prefix backend run lint
+      - run: node scripts/verify-access.mjs
+      - run: node scripts/verify-money.mjs
+      - run: node scripts/verify-local-d1.mjs

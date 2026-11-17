@@ -1,27 +1,19 @@
-import {
-  Controller,
-  Get,
-  Inject,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { PrismaService } from './database/prisma.service.js';
 
-export const DATABASE = Symbol('DATABASE');
-
-export interface HealthDatabase {
-  prepare(query: string): Pick<D1PreparedStatement, 'first'>;
-}
+export { DATABASE } from './database/database.tokens.js';
 
 @Controller('api/health')
 export class HealthController {
-  constructor(@Inject(DATABASE) private readonly database: HealthDatabase) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   @Get()
   async check(): Promise<{ status: 'ok'; database: 'ok' }> {
     try {
-      const result = await this.database
-        .prepare('SELECT 1 AS ok')
-        .first<{ ok: number }>();
-      if (result?.ok === 1) {
+      const result = await this.prisma.$queryRaw<
+        { ok: number | bigint }[]
+      >`SELECT 1 AS ok`;
+      if (result[0]?.ok === 1 || result[0]?.ok === 1n) {
         return { status: 'ok', database: 'ok' };
       }
     } catch {
