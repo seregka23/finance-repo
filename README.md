@@ -266,6 +266,17 @@ npm --prefix frontend start
 NestJS listens on port 3000 and Angular on port 4200. Angular's development proxy
 forwards `/api/**` to port 3000. The D1 health route belongs to the Worker runtime.
 
+## Money and household-month primitives
+
+The backend provides exact string-money parsing, recorded FX valuation, refund
+rounding and household calendar helpers. See the [contract](docs/finance/primitives.md)
+and [issue #8 acceptance record](docs/verification/issue-8.md). These are reusable
+primitives for future financial workflows. Run their native Worker/D1 checks with:
+
+```sh
+npm run verify:money
+```
+
 ## Checks
 
 ```sh

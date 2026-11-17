@@ -16,6 +16,7 @@ import {
 import type { AuthRequest, Identity } from '../auth/auth.js';
 import { apiError, unavailable } from '../auth/auth.js';
 import { DATABASE } from '../health.controller.js';
+import { validateTimeZone } from '../finance/calendar.js';
 
 export interface Database {
   prepare(sql: string): D1PreparedStatement;
@@ -75,11 +76,10 @@ function name(value: unknown): string {
 function timezone(value: unknown): string {
   if (typeof value !== 'string' || value.length > 100) throw invalid();
   try {
-    new Intl.DateTimeFormat('en', { timeZone: value });
+    return validateTimeZone(value);
   } catch {
     throw invalid();
   }
-  return value;
 }
 function email(value: unknown): string {
   if (
