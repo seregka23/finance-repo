@@ -78,6 +78,44 @@ The Worker name in `wrangler.jsonc` matches the existing `finance-repo` Worker.
 Use Workers Builds, rather than a Pages-only static deployment, because NestJS
 runs as Worker code.
 
+## Cloudflare branch previews
+
+In the **finance-repo** Worker's Builds settings, set the **Preview build
+configuration** (separate from the main branch settings) to:
+
+| Setting | Value |
+| --- | --- |
+| Root directory | `/` |
+| Build command | `npm run build` |
+| Deploy command | `npm run deploy:preview` |
+
+The build generates both `backend/dist/worker.js` and Angular's static assets.
+The deploy command first checks database isolation, applies pending SQL migrations
+using `wrangler.preview-migrations.jsonc`, and then runs `wrangler preview`.
+The build token needs D1 Write permission for the preview database in addition to
+its existing Worker deployment permissions. Builds must be trusted: the token can
+access account resources, so do not automatically build untrusted fork code.
+
+`wrangler.jsonc`'s `previews` block binds `DB` to **family-finance-preview**,
+not the current site's database. All branch previews share this dedicated test
+database, so use synthetic data. When changing the preview database, update both
+configuration files together; `npm run verify:preview` rejects mismatched IDs and
+IDs used by the normal deployment environments. Keep `backend/migrations` as the
+source of deployable SQL; Prisma generation does not apply D1 migrations.
+
+Preview URLs are public unless protected separately with Cloudflare Access. The
+app's normal registration and sign-in remain enabled. The top-level
+`preview_urls: true` enables workers.dev URLs for previews. Keep the Worker's
+Preview URLs setting enabled in Cloudflare too; otherwise deployment succeeds
+but reports "no active URLs". Changing this routing setting does not require
+replacing the current site's deployed code.
+
+Existing preview branches need these repository changes and their own build
+settings updated if they were created with the old empty build command. New
+previews inherit the Preview build configuration above. A missing `previews`
+block or an absent `backend/dist/worker.js` means the old configuration is still
+being used.
+
 ## Deploy from your computer
 
 Authenticate Wrangler for the account in `wrangler.jsonc`:
