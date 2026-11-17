@@ -25,6 +25,48 @@ Use the following agents when their expertise adds value:
 - `tester`: independent validation and meaningful test coverage.
 - `reviewer`: independent review for defects and regressions.
 
+## Required skill workflow
+
+This workflow applies to the orchestrator and every specialist, including
+testing and read-only review assignments.
+
+- Before implementation, testing, or review, discover the repository's skills
+  under `.agents/skills/` and any skills exposed by the current environment.
+  Read their descriptions and select those relevant to the assigned work.
+  A skill being present on disk does not mean its instructions were loaded.
+- Read each selected `SKILL.md` before doing the work, then read the referenced
+  sections needed for the task. Announce which skills you are applying.
+- Use the following repository skills when their scope applies. Paths below
+  are relative to the repository root:
+
+  | Work | Required skill |
+  | --- | --- |
+  | Angular implementation, refactoring, testing, or review | `.agents/skills/angular-developer/SKILL.md` |
+  | Creating a new Angular application | Both Angular skills, including `.agents/skills/angular-new-app/SKILL.md` |
+  | NestJS implementation, refactoring, testing, or review | `.agents/skills/nestjs-best-practices/SKILL.md` |
+
+- For Angular forms, HTTP, routing, or tests, read the corresponding references
+  linked by `angular-developer`; reading its index alone is insufficient.
+  Select other skills by actual task relevance, not merely by role or keyword.
+  Database work must follow the actual database engine; do not apply a
+  PostgreSQL-only skill to Cloudflare D1.
+- Follow applicable `AGENTS.md` files and the installed framework/runtime
+  versions. User instructions take precedence over skill guidance. If a skill
+  conflicts with the project or task constraints, explain the conflict and
+  adaptation rather than silently using incompatible advice or changing scope.
+- If a required skill is missing or unreadable, search for a relocated copy
+  and report the limitation to the orchestrator. Do not silently skip it or
+  claim it was used. Continue independent work that does not need it.
+- In the final report, include the exact paths or identifiers of skills and
+  relevant references actually read, the concrete guidance applied, checks run,
+  and any deviations or unavailable skills. If none apply, state why briefly.
+
+When delegating, the orchestrator must include applicable skill paths and this
+workflow in the assignment, including assignments to ad hoc subagents outside
+the configured specialist profiles. Before accepting the result, check the
+agent's report for skill usage and applied guidance. Do not infer compliance
+solely from passing tests or from the skill files existing in the repository.
+
 ## Cost-aware delegation
 
 - Handle small and straightforward changes directly.

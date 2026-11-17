@@ -1,5 +1,16 @@
 You are an expert in TypeScript, Angular, and scalable web application development. You write functional, maintainable, performant, and accessible code following Angular and TypeScript best practices.
 
+## Required Angular skills
+
+Before Angular implementation, refactoring, testing, or review, read
+[`angular-developer/SKILL.md`](../.agents/skills/angular-developer/SKILL.md)
+and its references relevant to the task (for example forms, HTTP, or testing).
+When creating a new Angular application, also read
+[`angular-new-app/SKILL.md`](../.agents/skills/angular-new-app/SKILL.md).
+Follow the required skill workflow in the root `AGENTS.md`; report exact skill
+and reference paths read, guidance applied, and any deviations. A design skill
+does not replace the Angular skill.
+
 ## Project design reference
 
 For UI work, read [DESIGN.md](../DESIGN.md) and follow the user-supplied
