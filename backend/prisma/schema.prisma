@@ -1,0 +1,269 @@
+// Models map the existing D1 schema. SQL migrations remain authoritative for
+// constraints, indexes, triggers, and views; do not use Prisma to migrate D1.
+generator client {
+  provider = "prisma-client"
+  output = "../src/generated/prisma"
+  runtime = "workerd"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model InfrastructureProbe {
+  id String @id
+  value String
+  @@map("infrastructure_probe")
+}
+
+model Household {
+  id String @id
+  name String
+  baseCurrency String @default("RSD") @map("base_currency")
+  timeZone String @default("Europe/Belgrade") @map("time_zone")
+  status String @default("active")
+  createdAt String @map("created_at")
+  updatedAt String @map("updated_at")
+  members HouseholdMember[]
+  categories Category[]
+  @@map("households")
+}
+
+model HouseholdMember {
+  id String @id
+  householdId String @map("household_id")
+  identitySubject String? @map("identity_subject")
+  role String
+  status String
+  createdAt String @map("created_at")
+  updatedAt String @map("updated_at")
+  email String?
+  household Household @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  @@unique([householdId, identitySubject])
+  @@unique([householdId, id])
+  @@map("household_members")
+}
+
+model Account {
+  id String @id
+  householdId String @map("household_id")
+  name String
+  type String
+  currency String
+  ownerMemberId String? @map("owner_member_id")
+  designation String
+  status String @default("active")
+  createdAt String @map("created_at")
+  updatedAt String @map("updated_at")
+  @@unique([householdId, id, currency])
+  @@unique([householdId, id])
+  @@map("accounts")
+}
+
+model Category {
+  id String @id
+  householdId String @map("household_id")
+  name String
+  type String
+  status String @default("active")
+  createdAt String @map("created_at")
+  updatedAt String @map("updated_at")
+  household Household @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  @@unique([householdId, id])
+  @@map("categories")
+}
+
+model MonthlyPlan {
+  id String @id
+  householdId String @map("household_id")
+  month String
+  categoryId String @map("category_id")
+  limitMinor BigInt @map("limit_minor")
+  createdAt String @map("created_at")
+  updatedAt String @map("updated_at")
+  @@unique([householdId, month, categoryId])
+  @@unique([householdId, id])
+  @@map("monthly_plans")
+}
+
+model Transaction {
+  id String @id
+  householdId String @map("household_id")
+  type String
+  transactionDate String @map("transaction_date")
+  categoryId String? @map("category_id")
+  merchant String?
+  note String?
+  authorMemberId String @map("author_member_id")
+  status String @default("posted")
+  version BigInt @default(1)
+  parentTransactionId String? @map("parent_transaction_id")
+  createdAt String @map("created_at")
+  updatedAt String @map("updated_at")
+  @@unique([householdId, id])
+  @@map("transactions")
+}
+
+model AccountMovement {
+  id String @id
+  householdId String @map("household_id")
+  accountId String @map("account_id")
+  transactionId String? @map("transaction_id")
+  type String
+  movementDate String @map("movement_date")
+  amountMinor BigInt @map("amount_minor")
+  currency String
+  rsdEquivalentMinor BigInt? @map("rsd_equivalent_minor")
+  exchangeRate String? @map("exchange_rate")
+  exchangeRateSource String? @map("exchange_rate_source")
+  createdAt String @map("created_at")
+  @@unique([householdId, id])
+  @@map("account_movements")
+}
+
+model Reserve {
+  id String @id
+  householdId String @map("household_id")
+  accountId String @map("account_id")
+  name String
+  status String @default("active")
+  createdAt String @map("created_at")
+  updatedAt String @map("updated_at")
+  @@unique([householdId, id, accountId])
+  @@unique([householdId, id])
+  @@map("reserves")
+}
+
+model ReserveMovement {
+  id String @id
+  householdId String @map("household_id")
+  reserveId String @map("reserve_id")
+  accountId String @map("account_id")
+  transactionId String? @map("transaction_id")
+  type String
+  movementDate String @map("movement_date")
+  amountMinor BigInt @map("amount_minor")
+  createdAt String @map("created_at")
+  @@unique([householdId, id])
+  @@map("reserve_movements")
+}
+
+model AuditEvent {
+  id String @id
+  householdId String @map("household_id")
+  actorMemberId String @map("actor_member_id")
+  action String
+  accountId String? @map("account_id")
+  categoryId String? @map("category_id")
+  monthlyPlanId String? @map("monthly_plan_id")
+  transactionId String? @map("transaction_id")
+  reserveId String? @map("reserve_id")
+  detailsJson String? @map("details_json")
+  createdAt String @map("created_at")
+  @@unique([householdId, id])
+  @@map("audit_events")
+}
+
+model ImportDraft {
+  id String @id
+  householdId String @map("household_id")
+  authorMemberId String @map("author_member_id")
+  sourceType String @map("source_type")
+  sourceHash String @map("source_hash")
+  extractedFieldsJson String @map("extracted_fields_json")
+  status String @default("pending")
+  suggestedAccountId String? @map("suggested_account_id")
+  suggestedCategoryId String? @map("suggested_category_id")
+  decisionProvider String? @map("decision_provider")
+  transactionId String? @map("transaction_id")
+  createdAt String @map("created_at")
+  updatedAt String @map("updated_at")
+  @@unique([householdId, id, transactionId])
+  @@unique([householdId, sourceType, sourceHash])
+  @@unique([householdId, id])
+  @@map("import_drafts")
+}
+
+model ReceiptItem {
+  id String @id
+  householdId String @map("household_id")
+  importDraftId String @map("import_draft_id")
+  transactionId String @map("transaction_id")
+  name String
+  quantity String?
+  unitPriceMinor BigInt? @map("unit_price_minor")
+  lineTotalMinor BigInt? @map("line_total_minor")
+  createdAt String @map("created_at")
+  @@unique([householdId, id])
+  @@map("receipt_items")
+}
+
+model ImportReference {
+  id String @id
+  householdId String @map("household_id")
+  sourceType String @map("source_type")
+  sourceRecordId String @map("source_record_id")
+  accountId String? @map("account_id")
+  categoryId String? @map("category_id")
+  monthlyPlanId String? @map("monthly_plan_id")
+  transactionId String? @map("transaction_id")
+  reserveId String? @map("reserve_id")
+  createdAt String @map("created_at")
+  @@unique([householdId, sourceType, sourceRecordId])
+  @@unique([householdId, id])
+  @@map("import_references")
+}
+
+model IdempotencyKey {
+  id String @id
+  householdId String @map("household_id")
+  memberId String @map("member_id")
+  requestKey String @map("request_key")
+  payloadHash String @map("payload_hash")
+  transactionId String @map("transaction_id")
+  createdAt String @map("created_at")
+  @@unique([householdId, memberId, requestKey])
+  @@map("idempotency_keys")
+}
+
+model HouseholdInvitation {
+  id String @id
+  householdId String @map("household_id")
+  email String
+  tokenHash String @unique @map("token_hash")
+  status String
+  expiresAt Int @map("expires_at")
+  createdByMemberId String @map("created_by_member_id")
+  acceptedByMemberId String? @map("accepted_by_member_id")
+  createdAt String @map("created_at")
+  updatedAt String @map("updated_at")
+  @@map("household_invitations")
+}
+
+model AuthUser {
+  id String @id
+  email String @unique
+  passwordAlgorithm String @map("password_algorithm")
+  passwordSalt String @map("password_salt")
+  passwordHash String @map("password_hash")
+  createdAt Int @map("created_at")
+  sessions AuthSession[]
+  @@map("auth_users")
+}
+
+model AuthSession {
+  tokenHash String @id @map("token_hash")
+  userId String @map("user_id")
+  expiresAt Int @map("expires_at")
+  createdAt Int @map("created_at")
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("auth_sessions")
+}
+
+model AuthThrottle {
+  key String @id
+  windowStart Int @map("window_start")
+  attempts Int
+  @@map("auth_throttles")
+}

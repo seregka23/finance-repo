@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { AuthService, ApiAuthGuard } from './auth.js';
 import type { Database } from '../households/households.js';
+import { PrismaService } from '../database/prisma.service.js';
 import type { ExecutionContext } from '@nestjs/common';
 
 function database() {
@@ -26,8 +27,22 @@ function database() {
         return db.prepare(sql).get(...values) ?? null;
       },
       async run() {
-        db.prepare(sql).run(...values);
-        return { results: [] };
+        const result = db.prepare(sql).run(...values);
+        return {
+          results: [],
+          meta: {
+            changes: Number(result.changes),
+            last_row_id: Number(result.lastInsertRowid),
+          },
+        };
+      },
+      async raw({ columnNames = false } = {}) {
+        const statement = db.prepare(sql);
+        const columns = statement.columns().map((column) => column.name);
+        const rows = statement
+          .all(...values)
+          .map((row) => columns.map((column) => row[column]));
+        return columnNames ? [columns, ...rows] : rows;
       },
       execute() {
         const stmt = db.prepare(sql);
@@ -59,7 +74,10 @@ function database() {
 describe('native authentication', () => {
   it('registers and logs in with a hashed password and revocable opaque session', async () => {
     const { adapter, raw } = database();
-    const auth = new AuthService(adapter);
+    const auth = new AuthService(
+      adapter,
+      new PrismaService(adapter as unknown as D1Database),
+    );
     const registration = await auth.authenticate(
       { email: 'User@example.com', password: 'correct horse battery' },
       '127.0.0.1',
@@ -118,7 +136,10 @@ describe('native authentication', () => {
         '65a782e7470205259892530b36ca2821766311cb1a8b82f565756297cdf12f8a',
         1,
       );
-    const result = await new AuthService(adapter).authenticate(
+    const result = await new AuthService(
+      adapter,
+      new PrismaService(adapter as unknown as D1Database),
+    ).authenticate(
       { email: 'vector@example.com', password: 'synthetic-runtime-probe' },
       'ip',
       false,
@@ -145,7 +166,10 @@ describe('native authentication', () => {
         hash,
         1,
       );
-    const auth = new AuthService(adapter);
+    const auth = new AuthService(
+      adapter,
+      new PrismaService(adapter as unknown as D1Database),
+    );
     await expect(
       auth.authenticate(
         { email: 'legacy@example.com', password: 'correct horse battery' },
@@ -194,7 +218,10 @@ describe('native authentication', () => {
         1,
       );
     await expect(
-      new AuthService(adapter).authenticate(
+      new AuthService(
+        adapter,
+        new PrismaService(adapter as unknown as D1Database),
+      ).authenticate(
         { email: 'unknown@example.com', password: 'correct horse battery' },
         'ip',
         false,
@@ -203,7 +230,10 @@ describe('native authentication', () => {
   });
   it('limits attempts by IP even across random emails', async () => {
     const { adapter } = database();
-    const auth = new AuthService(adapter);
+    const auth = new AuthService(
+      adapter,
+      new PrismaService(adapter as unknown as D1Database),
+    );
     for (let i = 0; i < 100; i++)
       await auth.throttle(`user${i}@example.com`, '127.0.0.1');
     await expect(
@@ -212,7 +242,10 @@ describe('native authentication', () => {
   });
   it('limits a single email across networks and clears its counter on success', async () => {
     const { adapter, raw } = database();
-    const auth = new AuthService(adapter);
+    const auth = new AuthService(
+      adapter,
+      new PrismaService(adapter as unknown as D1Database),
+    );
     await auth.authenticate(
       { email: 'user@example.com', password: 'correct horse battery' },
       'register-ip',
@@ -239,7 +272,12 @@ describe('native authentication', () => {
   }, 15000);
   it('requires the trusted origin for public writes', async () => {
     const { adapter } = database();
-    const guard = new ApiAuthGuard(new AuthService(adapter));
+    const guard = new ApiAuthGuard(
+      new AuthService(
+        adapter,
+        new PrismaService(adapter as unknown as D1Database),
+      ),
+    );
     const request = {
       path: '/api/v1/auth/register',
       method: 'POST',

@@ -112,9 +112,11 @@ import * as calendar from '../../dist/finance/calendar.js';
 import {summarizeRecordedMoney,RecordedMoneyError} from '../../dist/finance/recorded-money.js';
 import {MonetaryRepository} from '../../dist/finance/monetary-repository.js';
 import {HouseholdAccessService} from '../../dist/households/households.js';
+import {PrismaService} from '../../dist/database/prisma.service.js';
+const prisma = new PrismaService(env.DB);
 export default {async fetch(request){
  try{
-  const b=await request.json();const db=env.DB;const access=new HouseholdAccessService(db);
+  const b=await request.json();const db=env.DB;const access=new HouseholdAccessService(db,prisma);
   const identity={subject:request.headers.get('x-fixture-identity')||'',email:'fixture@example.invalid'};
   let result;
   switch(b.operation){

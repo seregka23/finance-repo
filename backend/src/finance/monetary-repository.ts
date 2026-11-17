@@ -25,6 +25,8 @@ export class MonetaryRepository {
     month: string,
   ) {
     const { startDate, endDate } = monthDateRange(month);
+    // Read amounts as text to retain full SQLite integer precision in D1.
+    // Keep the read in the same atomic batch as the live access assertion.
     const [, result] = await this.access.batch(
       identity,
       householdId,

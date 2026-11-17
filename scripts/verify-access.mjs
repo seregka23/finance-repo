@@ -171,6 +171,7 @@ import 'reflect-metadata';
 import { env } from 'cloudflare:workers';
 import worker from '../../dist/worker.js';
 import { AuthService } from '../../dist/auth/auth.js';
+import { PrismaService } from '../../dist/database/prisma.service.js';
 import { HouseholdAccessService } from '../../dist/households/households.js';
 import { CategoryService } from '../../dist/categories/categories.js';
 // Local Workerd does not enforce the deployed PBKDF2 cap. Model it here so
@@ -181,7 +182,8 @@ crypto.subtle.deriveBits = (algorithm, ...args) => {
     throw new DOMException('PBKDF2 exceeds the deployed iteration limit', 'NotSupportedError');
   return deriveBits(algorithm, ...args);
 };
-const auth = new AuthService(env.DB);
+const prisma = new PrismaService(env.DB);
+const auth = new AuthService(env.DB,prisma);
 const browserTokens = {};
 export default { async fetch(request,bindings,context) {
   const url = new URL(request.url);
@@ -200,7 +202,7 @@ export default { async fetch(request,bindings,context) {
     try {
       const identity = await auth.verify(request.headers.get('cookie')?.split(';').map(s=>s.trim()).find(s=>s.startsWith('finance_session='))?.slice('finance_session='.length) || '');
       const body = await request.json();
-      const access = new HouseholdAccessService(env.DB);
+      const access = new HouseholdAccessService(env.DB,prisma);
       const results = await access.batch(identity,body.householdId,body.role || 'member',[
         env.DB.prepare('INSERT INTO access_verification_records (id,household_id,value) VALUES (?,?,?)').bind(body.id,body.householdId,body.value),
         env.DB.prepare('SELECT value FROM access_verification_records WHERE household_id=? ORDER BY id').bind(body.householdId)
@@ -214,7 +216,7 @@ export default { async fetch(request,bindings,context) {
       const identity=await auth.verify(cookie||'');
       if(request.method !== 'GET' && request.headers.get('origin') !== new URL(request.url).origin) return Response.json({error:{code:'INVALID_ORIGIN'}},{status:403});
       const body=request.method==='GET'?Object.fromEntries(url.searchParams):await request.json();
-      const access=new HouseholdAccessService(env.DB);
+      const access=new HouseholdAccessService(env.DB,prisma);
       const categories=new CategoryService(env.DB,access);
       let statements=[];
       if(url.pathname==='/_verification/category-assert') {

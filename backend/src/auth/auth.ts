@@ -16,6 +16,7 @@ import type { Request, Response } from 'express';
 import { scryptSync, timingSafeEqual } from 'node:crypto';
 import { DATABASE } from '../health.controller.js';
 import type { Database } from '../households/households.js';
+import { PrismaService } from '../database/prisma.service.js';
 
 export interface Identity {
   subject: string;
@@ -153,22 +154,30 @@ function origin(req: Request): URL {
 interface UserRow {
   id: string;
   email: string;
-  password_algorithm: string;
-  password_salt: string;
-  password_hash: string;
+  passwordAlgorithm: string;
+  passwordSalt: string;
+  passwordHash: string;
 }
 @Injectable()
 export class AuthService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly prisma: PrismaService,
+  ) {}
   async verify(token: string): Promise<Identity> {
     if (!/^[a-f0-9]{64}$/.test(token)) throw unauthenticated();
     try {
-      const user = await this.db
-        .prepare(
-          'SELECT u.id, u.email FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?',
-        )
-        .bind(await digest(token), Math.floor(Date.now() / 1000))
-        .first<{ id: string; email: string }>();
+      const user = await this.prisma.authUser.findFirst({
+        where: {
+          sessions: {
+            some: {
+              tokenHash: await digest(token),
+              expiresAt: { gt: Math.floor(Date.now() / 1000) },
+            },
+          },
+        },
+        select: { id: true, email: true },
+      });
       if (!user) throw unauthenticated();
       return { subject: `user:${user.id}`, email: user.email };
     } catch (e) {
@@ -237,28 +246,32 @@ export class AuthService {
     const { email, password } = parsed;
     await this.throttle(email, ip);
     try {
-      const user = await this.db
-        .prepare(
-          'SELECT id,email,password_algorithm,password_salt,password_hash FROM auth_users WHERE email=?',
-        )
-        .bind(email)
-        .first<UserRow>();
+      const user: UserRow | null = await this.prisma.authUser.findUnique({
+        where: { email },
+        select: {
+          id: true,
+          email: true,
+          passwordAlgorithm: true,
+          passwordSalt: true,
+          passwordHash: true,
+        },
+      });
       const salt =
         register && !user
           ? randomHex(16)
-          : (user?.password_salt ?? '00000000000000000000000000000000');
+          : (user?.passwordSalt ?? '00000000000000000000000000000000');
       if (
         !register &&
         user &&
-        ![algorithm, legacyAlgorithm].includes(user.password_algorithm)
+        ![algorithm, legacyAlgorithm].includes(user.passwordAlgorithm)
       )
         throw invalidCredentials();
       const computed = await passwordHash(
         password,
         salt,
-        !register && user ? user.password_algorithm : algorithm,
+        !register && user ? user.passwordAlgorithm : algorithm,
       );
-      if (register ? !!user : !user || !equal(computed, user.password_hash))
+      if (register ? !!user : !user || !equal(computed, user.passwordHash))
         throw invalidCredentials();
       const id = register ? crypto.randomUUID() : user!.id;
       const token = randomHex(32);
@@ -296,10 +309,9 @@ export class AuthService {
   async logout(token: string): Promise<void> {
     if (!/^[a-f0-9]{64}$/.test(token)) return;
     try {
-      await this.db
-        .prepare('DELETE FROM auth_sessions WHERE token_hash=?')
-        .bind(await digest(token))
-        .run();
+      await this.prisma.authSession.deleteMany({
+        where: { tokenHash: await digest(token) },
+      });
     } catch {
       throw unavailable();
     }

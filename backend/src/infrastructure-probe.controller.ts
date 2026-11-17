@@ -5,7 +5,6 @@ import {
   Delete,
   Get,
   HttpCode,
-  Inject,
   Injectable,
   NotFoundException,
   Param,
@@ -14,17 +13,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { DATABASE } from './health.controller.js';
-
-interface ProbeStatement {
-  bind(...values: string[]): ProbeStatement;
-  run(): Promise<unknown>;
-  first<T>(): Promise<T | null>;
-}
-
-export interface ProbeDatabase {
-  prepare(query: string): ProbeStatement;
-}
+import { PrismaService } from './database/prisma.service.js';
 
 interface Probe {
   id: string;
@@ -33,15 +22,12 @@ interface Probe {
 
 @Injectable()
 export class InfrastructureProbeService {
-  constructor(@Inject(DATABASE) private readonly database: ProbeDatabase) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(value: string): Promise<Probe> {
     const probe = { id: crypto.randomUUID(), value };
     try {
-      await this.database
-        .prepare('INSERT INTO infrastructure_probe (id, value) VALUES (?, ?)')
-        .bind(probe.id, probe.value)
-        .run();
+      await this.prisma.infrastructureProbe.create({ data: probe });
       return probe;
     } catch {
       throw new ServiceUnavailableException('Database is unavailable');
@@ -51,10 +37,9 @@ export class InfrastructureProbeService {
   async get(id: string): Promise<Probe> {
     let probe: Probe | null;
     try {
-      probe = await this.database
-        .prepare('SELECT id, value FROM infrastructure_probe WHERE id = ?')
-        .bind(id)
-        .first<Probe>();
+      probe = await this.prisma.infrastructureProbe.findUnique({
+        where: { id },
+      });
     } catch {
       throw new ServiceUnavailableException('Database is unavailable');
     }
@@ -64,10 +49,7 @@ export class InfrastructureProbeService {
 
   async delete(id: string): Promise<void> {
     try {
-      await this.database
-        .prepare('DELETE FROM infrastructure_probe WHERE id = ?')
-        .bind(id)
-        .run();
+      await this.prisma.infrastructureProbe.deleteMany({ where: { id } });
     } catch {
       throw new ServiceUnavailableException('Database is unavailable');
     }
