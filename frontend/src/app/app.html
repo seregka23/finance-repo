@@ -74,6 +74,7 @@
           <div class="profile-links">
             <p>{{ api.session()!.user.email }}</p>
             <a routerLink="/settings">Household settings</a>
+            <a routerLink="/categories">Categories</a>
             @if (config()?.signOutUrl) {
               <a [href]="config()!.signOutUrl">Sign out</a>
             }

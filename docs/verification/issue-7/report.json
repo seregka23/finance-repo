@@ -1,0 +1,15 @@
+{
+  "checks": [
+    "empty categories and optional reference names do not seed records",
+    "both members manage categories; invalid input and cross-household IDs are rejected",
+    "selection lists offer only active categories eligible for each purpose",
+    "atomic eligibility assertions reject stale/wrong choices and roll back prior writes",
+    "renaming and archival retain readable history; type stays immutable",
+    "concurrent independent edits merge and revocation blocks subsequent category operations",
+    "category browser flow creates, renames, archives, restores and resets real filters",
+    "category loading, failure and retry do not masquerade as empty results"
+  ],
+  "pageErrors": [],
+  "axe": "Zero WCAG A/AA violations at 1440, 390 and 320px",
+  "fixture": "Actual local Worker/D1, signed synthetic identities"
+}

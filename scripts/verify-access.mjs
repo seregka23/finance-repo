@@ -186,6 +186,7 @@ import { NestFactory } from '@nestjs/core';
 import { WorkerModule } from '../../dist/worker.module.js';
 import { AccessAuthService } from '../../dist/auth/auth.js';
 import { HouseholdAccessService } from '../../dist/households/households.js';
+import { CategoryService } from '../../dist/categories/categories.js';
 const settings = {teamDomain:${JSON.stringify(issuer)},audience:${JSON.stringify(audience)},appOrigin:${JSON.stringify(appOrigin)},fetch:async () => Response.json({keys:[${JSON.stringify(publicKey)}]})};
 const auth = new AccessAuthService(settings);
 const handler = httpServerHandler({port:3000});
@@ -206,6 +207,35 @@ export default { async fetch(request,bindings,context) {
       ]);
       return Response.json(results[2].results);
     } catch(e) { return Response.json(e.getResponse?.() || {error:{code:'VERIFICATION_FAILED'}},{status:e.getStatus?.() || 500}); }
+  }
+  if(url.pathname.startsWith('/_verification/category-')) {
+    try {
+      const cookie=request.headers.get('cookie')?.split(';').map(s=>s.trim()).find(s=>s.startsWith('CF_Authorization='))?.slice('CF_Authorization='.length);
+      const identity=await auth.verify(request.headers.get('cf-access-jwt-assertion')||cookie||'');
+      if(request.method !== 'GET' && request.headers.get('origin') !== settings.appOrigin) return Response.json({error:{code:'INVALID_ORIGIN'}},{status:403});
+      const body=request.method==='GET'?Object.fromEntries(url.searchParams):await request.json();
+      const access=new HouseholdAccessService(env.DB);
+      const categories=new CategoryService(env.DB,access);
+      let statements=[];
+      if(url.pathname==='/_verification/category-assert') {
+        if(request.method==='GET') statements=[env.DB.prepare('SELECT id FROM access_verification_records WHERE household_id=? AND id=?').bind(body.householdId,body.marker)];
+        else statements=[
+          env.DB.prepare('INSERT INTO access_verification_records(id,household_id,value) VALUES (?,?,?)').bind(body.marker,body.householdId,'category assertion proof'),
+          categories.selectionStatement(body.householdId,body.categoryId,body.usage)
+        ];
+      } else if(url.pathname==='/_verification/category-history') {
+        if(request.method==='POST') {
+          const now=new Date().toISOString();
+          statements=[categories.selectionStatement(body.householdId,body.categoryId,'expense'),
+            env.DB.prepare("INSERT INTO transactions(id,household_id,type,transaction_date,category_id,author_member_id,created_at,updated_at) SELECT ?,?,'expense','2026-11-17',?,id,?,? FROM household_members WHERE household_id=? AND identity_subject=? AND status='active'").bind(crypto.randomUUID(),body.householdId,body.categoryId,now,now,body.householdId,identity.subject),
+            env.DB.prepare("INSERT INTO monthly_plans(id,household_id,month,category_id,limit_minor,created_at,updated_at) VALUES (?,?,'2026-11',?,10000,?,?)").bind(crypto.randomUUID(),body.householdId,body.categoryId,now,now)
+          ];
+        } else if(request.method==='PATCH') statements=[env.DB.prepare('UPDATE categories SET type=? WHERE household_id=? AND id=?').bind(body.type,body.householdId,body.categoryId)];
+        else statements=[env.DB.prepare('SELECT c.id,c.name,c.type,c.status,(SELECT COUNT(*) FROM transactions WHERE household_id=c.household_id AND category_id=c.id) AS transactionCount,(SELECT COUNT(*) FROM monthly_plans WHERE household_id=c.household_id AND category_id=c.id) AS planCount FROM categories c WHERE c.household_id=? AND c.id=?').bind(body.householdId,body.categoryId)];
+      } else return Response.json({error:{code:'NOT_FOUND'}},{status:404});
+      const results=await access.batch(identity,body.householdId,'member',statements);
+      return Response.json(request.method==='GET'?results[1].results:{ok:true});
+    } catch(e) { return Response.json(e.getResponse?.()||{error:{code:'VERIFICATION_FAILED'}},{status:e.getStatus?.()||500}); }
   }
   application ??= NestFactory.create(WorkerModule.register(env.DB,false,settings),{logger:['error','warn'],abortOnError:false}).then(async app => {
     app.use('/api/v1',(_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});

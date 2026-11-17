@@ -44,6 +44,7 @@ export class App {
         this.currentTitle.set(
           path === '/settings'
             ? 'Household settings'
+            : path === '/categories' ? 'Categories'
             : (this.navigation.find((item) => item.path === path)?.label ?? 'Dashboard'),
         );
         setTimeout(() => document.querySelector<HTMLElement>('.content h1')?.focus());

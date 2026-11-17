@@ -117,7 +117,28 @@ isolated actual Worker/local-D1 fixture. It does not contact a real identity
 provider or modify remote resources. See the
 [issue #5 validation record](docs/verification/issue-5.md).
 
-## Navigation and first use
+## Household categories
+
+Open **Profile → Categories**, or **Manage categories** in household settings.
+Both members can create expense/income categories, rename them, archive them and
+restore them. Archived categories stay readable in history but are excluded from
+new selection options. A category's type is fixed; create a new category when a
+different type is needed. Suggested names only fill the form and are saved only
+after submitting it.
+
+```sh
+npm run verify:categories
+```
+
+This builds both apps and verifies category APIs, history/eligibility rules and
+desktop/mobile browser flows in a disposable local Worker/D1 fixture. It uses
+the same Chromium setup as `verify:navigation`; artifacts are kept under ignored
+`.cloudflare/categories-verification/`. See the
+[category contract](docs/ui/categories.md) and
+[issue #7 evidence](docs/verification/issue-7.md). Migration `0004` must be reviewed
+and applied to the intended database separately; building does not migrate it.
+
+## Financial navigation and first use
 
 Signed-in users can navigate Dashboard → Accounts → Transactions → Budgets →
 Reserves → Reports. Household settings remain under Profile. A person without
