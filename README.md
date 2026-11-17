@@ -373,6 +373,22 @@ See the [API contract](docs/api/transfers.md),
 [verification record](docs/verification/issue-11.md).
 Run `npm run verify:transfers` for disposable local Workerd/D1 acceptance checks.
 
+## Linked refunds
+
+The shared transaction API accepts refunds linked to an expense purchase. The
+server inherits its category, currency and recorded rate. Refunds credit an
+active account in that currency and reduce spending on their actual credit date;
+they do not allocate money to reserves. Cumulative exact rounding makes a full
+FX refund offset the purchase's recorded RSD value.
+
+Refund changes and their allocation, balance, version, audit and idempotency
+state use one D1 batch. Posted refunds protect the purchase's conversion/category
+and prevent decreasing it below the refunded total or voiding it. Historical
+voided refunds are retained. See the [API](docs/api/refunds.md),
+[database protocol](docs/database/refunds.md) and
+[verification record](docs/verification/issue-12.md).
+Run `npm run verify:refunds` for disposable local D1 acceptance checks.
+
 ## Accounts
 
 The Accounts page supports opening balances, ownership labels, signed balance

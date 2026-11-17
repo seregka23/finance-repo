@@ -4,7 +4,7 @@ import type { Identity } from '../auth/auth.js';
 import { validateDate } from '../finance/calendar.js';
 import { recordConversion } from '../finance/fx.js';
 import { parseMinor, validateCurrency } from '../finance/money.js';
-import type { PostingInput, TransferInput } from './contracts.js';
+import type { PostingInput, TransferInput, RefundInput } from './contracts.js';
 import { PostingRepository } from './posting.repository.js';
 
 const invalid = () => apiError(400, 'INVALID_INPUT', 'Invalid input');
@@ -190,6 +190,41 @@ export function transfer(
     throw invalid();
   }
 }
+const refundKeys = [
+  'type',
+  'transactionDate',
+  'purchaseTransactionId',
+  'accountId',
+  'amountMinor',
+  'merchant',
+  'note',
+];
+export function refund(
+  body: Record<string, unknown>,
+  replacement = false,
+): RefundInput {
+  fields(body, [...refundKeys, ...(replacement ? ['version'] : [])]);
+  const required = replacement
+    ? refundKeys
+    : refundKeys.filter((k) => k !== 'merchant' && k !== 'note');
+  if (required.some((k) => !(k in body)) || body.type !== 'refund')
+    throw invalid();
+  try {
+    const amount = parseMinor(body.amountMinor);
+    if (amount <= 0n) throw invalid();
+    return {
+      type: 'refund',
+      transactionDate: validateDate(body.transactionDate),
+      purchaseTransactionId: requiredText(body.purchaseTransactionId, 200),
+      accountId: requiredText(body.accountId, 200),
+      amountMinor: amount.toString(),
+      merchant: optionalText(body.merchant ?? null, 200),
+      note: optionalText(body.note ?? null, 2000),
+    };
+  } catch {
+    throw invalid();
+  }
+}
 function requestKey(value: unknown): string {
   if (typeof value !== 'string' || !/^[\x21-\x7e]{1,128}$/.test(value))
     throw invalid();
@@ -203,9 +238,16 @@ export class TransactionsService {
       body,
       (body as { type?: unknown })?.type === 'transfer'
         ? transferKeys
-        : inputKeys,
+        : (body as { type?: unknown })?.type === 'refund'
+          ? refundKeys
+          : inputKeys,
     );
-    const normalized = raw.type === 'transfer' ? transfer(raw) : posting(raw);
+    const normalized =
+      raw.type === 'transfer'
+        ? transfer(raw)
+        : raw.type === 'refund'
+          ? refund(raw)
+          : posting(raw);
     return this.repository.post(
       identity,
       householdId,
@@ -215,15 +257,20 @@ export class TransactionsService {
   }
   edit(identity: Identity, householdId: string, id: string, body: unknown) {
     const isTransfer = (body as { type?: unknown })?.type === 'transfer';
+    const isRefund = (body as { type?: unknown })?.type === 'refund';
     const b = fields(body, [
-      ...(isTransfer ? transferKeys : inputKeys),
+      ...(isTransfer ? transferKeys : isRefund ? refundKeys : inputKeys),
       'version',
     ]);
     return this.repository.edit(
       identity,
       householdId,
       id,
-      isTransfer ? transfer(b, true) : posting(b, true),
+      isTransfer
+        ? transfer(b, true)
+        : isRefund
+          ? refund(b, true)
+          : posting(b, true),
       version(b.version),
     );
   }

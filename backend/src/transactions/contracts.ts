@@ -68,4 +68,29 @@ export interface FeeRecord extends Omit<TransactionRecord, 'type'> {
   parentTransactionId: string;
 }
 
-export type AnyTransactionRecord = TransactionRecord | TransferRecord | FeeRecord;
+export interface RefundInput {
+  type: 'refund';
+  transactionDate: string;
+  purchaseTransactionId: string;
+  accountId: string;
+  amountMinor: string;
+  merchant: string | null;
+  note: string | null;
+}
+
+export interface RefundRecord extends RefundInput {
+  id: string;
+  householdId: string;
+  authorMemberId: string;
+  categoryId: string;
+  currency: Currency;
+  exchangeRate: string | null;
+  exchangeRateSource: string | null;
+  rsdEquivalentMinor: string | null;
+  version: number;
+  status: 'posted' | 'void';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AnyTransactionRecord = TransactionRecord | TransferRecord | FeeRecord | RefundRecord;

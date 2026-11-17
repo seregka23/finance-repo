@@ -245,3 +245,70 @@ describe('transfer normalization', () => {
     ).toBeNull();
   });
 });
+
+describe('refund validation', () => {
+  const baseRefund = {
+    type: 'refund',
+    transactionDate: '2026-02-01',
+    purchaseTransactionId: ' purchase ',
+    accountId: ' account ',
+    amountMinor: '1',
+  };
+  it('normalizes the canonical request and dispatches it', () => {
+    const { service, repo } = setup();
+    void service.create(
+      identity,
+      'h',
+      { ...baseRefund, merchant: '  ', note: ' note ' },
+      'key',
+    );
+    expect(repo.post).toHaveBeenCalledWith(
+      identity,
+      'h',
+      {
+        type: 'refund',
+        transactionDate: '2026-02-01',
+        purchaseTransactionId: 'purchase',
+        accountId: 'account',
+        amountMinor: '1',
+        merchant: null,
+        note: 'note',
+      },
+      'key',
+    );
+  });
+  it.each([
+    { amountMinor: '0' },
+    { amountMinor: '9007199254740992' },
+    { currency: 'EUR' },
+    { categoryId: 'x' },
+    { exchangeRate: '1' },
+    { exchangeRateSource: 'x' },
+  ])('rejects invalid or derived input %o', (change) => {
+    const { service } = setup();
+    expect(() =>
+      service.create(identity, 'h', { ...baseRefund, ...change }, 'key'),
+    ).toThrow();
+  });
+  it('requires a complete replacement and numeric version', () => {
+    const { service, repo } = setup();
+    expect(() =>
+      service.edit(identity, 'h', 'r', { ...baseRefund, version: 1 }),
+    ).toThrow();
+    expect(() =>
+      service.edit(identity, 'h', 'r', {
+        ...baseRefund,
+        merchant: null,
+        note: null,
+        version: '1',
+      }),
+    ).toThrow();
+    void service.edit(identity, 'h', 'r', {
+      ...baseRefund,
+      merchant: null,
+      note: null,
+      version: 1,
+    });
+    expect(repo.edit).toHaveBeenCalledOnce();
+  });
+});

@@ -107,6 +107,8 @@ model Transaction {
   household Household @relation(fields: [householdId], references: [id], onDelete: Restrict)
   postingDetails PostingDetails?
   transferDetails TransferDetails?
+  refundDetails RefundDetails? @relation("RefundTransaction")
+  purchaseRefunds RefundDetails[] @relation("RefundPurchase")
   parent Transaction? @relation("TransactionChildren", fields: [householdId, parentTransactionId], references: [householdId, id], onDelete: Restrict)
   children Transaction[] @relation("TransactionChildren")
   feeForTransfer TransferDetails? @relation("TransferFee")
@@ -317,4 +319,16 @@ model TransferDetails {
   @@unique([householdId, transactionId])
   @@unique([householdId, feeTransactionId])
   @@map("transfer_details")
+}
+
+model RefundDetails {
+  transactionId String @id @map("transaction_id")
+  householdId String @map("household_id")
+  purchaseTransactionId String @map("purchase_transaction_id")
+  allocationSequence BigInt @map("allocation_sequence")
+  transaction Transaction @relation("RefundTransaction", fields: [householdId, transactionId], references: [householdId, id], onDelete: Restrict)
+  purchase Transaction @relation("RefundPurchase", fields: [householdId, purchaseTransactionId], references: [householdId, id], onDelete: Restrict)
+  @@unique([householdId, transactionId])
+  @@unique([householdId, purchaseTransactionId, allocationSequence])
+  @@map("refund_details")
 }
