@@ -35,6 +35,18 @@
       "migrations_dir": "backend/migrations"
     }
   ],
+  // Previews use a separate D1 database; bindings are not isolated automatically.
+  "previews": {
+    "vars": {
+      "APP_ENVIRONMENT": "preview",
+      "INFRASTRUCTURE_PROBE_ENABLED": "false"
+    },
+    "d1_databases": [{
+      "binding": "DB",
+      "database_name": "family-finance-preview",
+      "database_id": "76e93026-a7e8-40f1-ac66-b0dc5c65b2cf"
+    }]
+  },
   "observability": {
     "enabled": true,
     "logs": { "enabled": true },

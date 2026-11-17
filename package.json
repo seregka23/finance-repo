@@ -15,6 +15,8 @@
     "deploy": "npm run build && wrangler deploy --env \"\"",
     "deploy:check": "npm run build && wrangler deploy --env \"\" --dry-run",
     "deploy:cloudflare": "wrangler d1 migrations apply DB --remote --env \"\" && wrangler deploy --env \"\"",
+    "deploy:preview": "npm run verify:preview && wrangler d1 migrations apply PREVIEW_DB --remote --config wrangler.preview-migrations.jsonc && wrangler preview",
+    "verify:preview": "node scripts/verify-preview-config.mjs",
     "db:migrate:local": "wrangler d1 migrations apply DB --env local --local",
     "verify:local": "npm run build && node scripts/verify-local-d1.mjs",
     "verify:schema": "node scripts/verify-schema.mjs",
