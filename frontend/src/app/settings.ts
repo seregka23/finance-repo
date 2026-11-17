@@ -1,8 +1,9 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Api, Household, Members } from './api';
-@Component({ imports: [ReactiveFormsModule, DatePipe], templateUrl: './settings.html' })
+@Component({ imports: [ReactiveFormsModule, DatePipe, RouterLink], templateUrl: './settings.html' })
 export class Settings {
   protected readonly api = inject(Api);
   protected readonly household = computed(

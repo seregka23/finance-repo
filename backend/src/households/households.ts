@@ -30,6 +30,18 @@ const invitationInvalid = () =>
   apiError(409, 'INVITATION_INVALID', 'Invitation is invalid or expired');
 function dbError(error: unknown): never {
   const s = String(error);
+  if (s.includes('category_not_eligible'))
+    throw apiError(
+      409,
+      'CATEGORY_NOT_ELIGIBLE',
+      'Category is not eligible for this selection',
+    );
+  if (s.includes('category_type_immutable'))
+    throw apiError(
+      409,
+      'CATEGORY_TYPE_IMMUTABLE',
+      'Category type cannot be changed',
+    );
   if (s.includes('household_capacity_exceeded'))
     throw apiError(409, 'HOUSEHOLD_FULL', 'Household is full');
   if (

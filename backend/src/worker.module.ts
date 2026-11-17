@@ -16,6 +16,10 @@ import {
 } from './households/households.js';
 import { AppModule } from './app.module.js';
 import {
+  CategoriesController,
+  CategoryService,
+} from './categories/categories.js';
+import {
   WorkspaceController,
   WorkspaceService,
 } from './workspace/workspace.js';
@@ -45,6 +49,7 @@ export class WorkerModule {
         AuthController,
         HouseholdsController,
         WorkspaceController,
+        CategoriesController,
         ...(probeEnabled ? [InfrastructureProbeController] : []),
       ],
       providers: [
@@ -54,6 +59,7 @@ export class WorkerModule {
         HouseholdAccessService,
         HouseholdsService,
         WorkspaceService,
+        CategoryService,
         { provide: APP_FILTER, useClass: ApiErrorFilter },
         { provide: APP_GUARD, useClass: ApiAuthGuard },
         { provide: APP_GUARD, useClass: HouseholdGuard },

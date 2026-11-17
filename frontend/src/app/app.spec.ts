@@ -72,6 +72,7 @@ describe('invitation form', () => {
   afterEach(() => vi.restoreAllMocks());
   it('submits the owner invitation through Angular without navigating away', async () => {
     const { Settings } = await import('./settings');
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
     const household = {
       id: 'household',
       name: 'Our household',

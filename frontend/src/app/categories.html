@@ -1,0 +1,162 @@
+<div class="pagehead">
+  <div>
+    <h1 tabindex="-1">Categories</h1>
+    <p>Organize your household's income and expenses.</p>
+  </div>
+</div>
+@if (!api.selectedId()) {
+  <section class="panel">
+    <h2>Create a household first</h2>
+    <p class="sub">Categories belong to a shared household.</p>
+    <a class="btn" routerLink="/settings">Go to household settings</a>
+  </section>
+} @else {
+  @if (error()) {
+    <div class="alert" role="alert">{{ error() }}</div>
+  }
+  @if (success()) {
+    <div class="notice" role="status">{{ success() }}</div>
+  }
+  <div class="cols">
+    <section class="panel">
+      <h2>Categories</h2>
+      <p class="sub">
+        Archived categories remain in history and cannot be selected for new activity. A category's
+        type is fixed when created.
+      </p>
+      <div class="filters category-filters">
+        <label
+          >Search categories<input
+            class="field"
+            type="search"
+            [value]="query()"
+            (input)="setQuery($event)"
+        /></label>
+        <div class="category-status">
+          <label for="category-status">Status</label
+          ><select
+            id="category-status"
+            class="field"
+            [value]="status()"
+            (change)="setStatus($event)"
+          >
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+          </select>
+        </div>
+      </div>
+      @if (loading()) {
+        <p role="status">Loading categories…</p>
+      } @else if (loadError()) {
+        <div class="alert" role="alert">{{ loadError() }}</div>
+        <button class="btn" type="button" (click)="retry()">Try again</button>
+      } @else if (!rows().length) {
+        <app-results-state message="No categories yet. Create one to get started." />
+      } @else if (!filtered().length) {
+        <app-results-state variant="no-match" (reset)="resetFilters()" />
+      } @else {
+        @for (row of filtered(); track row.id) {
+          <div class="category-row">
+            @if (editing() === row.id) {
+              <form [formGroup]="editForm" (ngSubmit)="rename(row)">
+                <label
+                  >Category name<input
+                    #editInput
+                    class="field"
+                    formControlName="name"
+                    maxlength="80"
+                    required
+                /></label>
+                <div class="actions">
+                  <button class="btn primary" type="submit" [disabled]="busy()">
+                    {{ busy() ? 'Saving…' : 'Save name' }}</button><button
+                    class="btn"
+                    type="button"
+                    [disabled]="busy()"
+                    (click)="cancelEdit(row.id)"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            } @else {
+              <div>
+                <strong>{{ row.name }}</strong>
+                <p class="sub">
+                  {{ row.type === 'expense' ? 'Expense' : 'Income' }} ·
+                  {{ row.status === 'active' ? 'Active' : 'Archived' }}
+                </p>
+                <p class="sub">
+                  {{
+                    row.type === 'expense'
+                      ? 'For expenses, fees, refunds and budgets'
+                      : 'For income'
+                  }}. Not used for transfers.
+                </p>
+              </div>
+              <div class="actions">
+                <button
+                  class="btn"
+                  type="button"
+                  [disabled]="busy()"
+                  #renameButton
+                  [attr.data-category-id]="row.id"
+                  (click)="startEdit(row)"
+                  [attr.aria-label]="'Rename ' + row.name"
+                >
+                  Rename</button
+                ><button
+                  class="btn"
+                  type="button"
+                  [disabled]="busy()"
+                  (click)="toggle(row)"
+                  [attr.aria-label]="(row.status === 'active' ? 'Archive ' : 'Restore ') + row.name"
+                >
+                  {{ row.status === 'active' ? 'Archive' : 'Restore' }}
+                </button>
+              </div>
+            }
+          </div>
+        }
+      }
+    </section>
+    <section class="panel">
+      <h2>Create a category</h2>
+      <p class="sub">Choose a type for this category. You can rename or archive it later.</p>
+      <form [formGroup]="form" (ngSubmit)="create()">
+        <label>Name<input class="field" formControlName="name" maxlength="80" required /></label>
+        <div class="category-type">
+          <label for="category-type">Type</label
+          ><select id="category-type" class="field" formControlName="type">
+            <option value="expense">Expense</option>
+            <option value="income">Income</option>
+          </select>
+        </div>
+        <button class="btn primary" type="submit" [disabled]="busy()">
+          {{ busy() ? 'Saving…' : 'Create category' }}
+        </button>
+      </form>
+      @if (suggestions().expense.length || suggestions().income.length) {
+        <div class="category-suggestions">
+          <p class="sub">Need an idea? Select a suggested name to fill the form, then create it.</p>
+          @for (name of suggestions().expense; track name) {
+            <button
+              class="btn"
+              type="button"
+              [disabled]="busy()"
+              (click)="suggest(name, 'expense')"
+            >
+              {{ name }}
+            </button>
+          }
+          @for (name of suggestions().income; track name) {
+            <button class="btn" type="button" [disabled]="busy()" (click)="suggest(name, 'income')">
+              {{ name }}
+            </button>
+          }
+        </div>
+      }
+    </section>
+  </div>
+}

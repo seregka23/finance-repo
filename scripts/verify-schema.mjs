@@ -374,6 +374,7 @@ async function verify() {
           "0001_infrastructure_probe.sql",
           "0002_household_finance_schema.sql",
           "0003_household_access.sql",
+          "0004_category_eligibility.sql",
         ],
       );
       assert.deepEqual(

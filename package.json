@@ -18,7 +18,8 @@
     "verify:local": "npm run build && node scripts/verify-local-d1.mjs",
     "verify:schema": "node scripts/verify-schema.mjs",
     "verify:access": "npm run build && node scripts/verify-access.mjs",
-    "verify:navigation": "npm run build && node scripts/verify-navigation.mjs"
+    "verify:navigation": "npm run build && node scripts/verify-navigation.mjs",
+    "verify:categories": "npm run build && node scripts/verify-categories.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

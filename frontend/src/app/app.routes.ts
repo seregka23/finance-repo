@@ -8,6 +8,7 @@ export const routes: Routes = [
     data: { page },
     loadComponent: finance,
   })),
+  { path: 'categories', title: 'Categories | Family Finance', loadComponent: () => import('./categories').then((m) => m.Categories) },
   {
     path: 'settings',
     title: 'Household settings | Family Finance',
