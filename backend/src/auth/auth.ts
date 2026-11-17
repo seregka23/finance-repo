@@ -13,7 +13,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { timingSafeEqual } from 'node:crypto';
+import { scryptSync, timingSafeEqual } from 'node:crypto';
 import { DATABASE } from '../health.controller.js';
 import type { Database } from '../households/households.js';
 
@@ -36,7 +36,8 @@ export const unavailable = () =>
 const invalidCredentials = () =>
   apiError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
 const encoder = new TextEncoder();
-const algorithm = 'pbkdf2-sha256-600000-v1';
+const algorithm = 'scrypt-16384-8-5-v1';
+const legacyAlgorithm = 'pbkdf2-sha256-600000-v1';
 const lifetime = 7 * 24 * 60 * 60;
 function hex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -51,7 +52,10 @@ async function digest(value: string): Promise<string> {
     ),
   );
 }
-async function passwordHash(password: string, salt: string): Promise<string> {
+async function legacyPasswordHash(
+  password: string,
+  salt: string,
+): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw',
     encoder.encode(password),
@@ -71,6 +75,30 @@ async function passwordHash(password: string, salt: string): Promise<string> {
       ),
     ),
   );
+}
+async function passwordHash(
+  password: string,
+  salt: string,
+  selectedAlgorithm: string,
+): Promise<string> {
+  try {
+    if (selectedAlgorithm === legacyAlgorithm)
+      return await legacyPasswordHash(password, salt);
+    return scryptSync(password, Buffer.from(salt, 'hex'), 32, {
+      N: 16384,
+      r: 8,
+      p: 5,
+      maxmem: 33554432,
+    }).toString('hex');
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        stage: 'password_hash',
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+      }),
+    );
+    throw apiError(503, 'AUTH_UNAVAILABLE', 'Authentication is unavailable');
+  }
 }
 function equal(a: string, b: string): boolean {
   // Password hashes have a fixed public size; compare their bytes in native code.
@@ -219,14 +247,18 @@ export class AuthService {
         register && !user
           ? randomHex(16)
           : (user?.password_salt ?? '00000000000000000000000000000000');
-      const computed = await passwordHash(password, salt);
       if (
-        register
-          ? !!user
-          : !user ||
-            user.password_algorithm !== algorithm ||
-            !equal(computed, user.password_hash)
+        !register &&
+        user &&
+        ![algorithm, legacyAlgorithm].includes(user.password_algorithm)
       )
+        throw invalidCredentials();
+      const computed = await passwordHash(
+        password,
+        salt,
+        !register && user ? user.password_algorithm : algorithm,
+      );
+      if (register ? !!user : !user || !equal(computed, user.password_hash))
         throw invalidCredentials();
       const id = register ? crypto.randomUUID() : user!.id;
       const token = randomHex(32);

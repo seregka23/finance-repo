@@ -64,8 +64,24 @@ Cross-origin CORS is not enabled.
 
 ## Passwords and sessions
 
-Passwords use PBKDF2-SHA256 with 600,000 iterations, a random 16-byte salt and a
-versioned algorithm identifier. Plaintext passwords are never persisted.
+New passwords use native `node:crypto` scrypt with N=16,384, r=8, p=5,
+`maxmem=33,554,432`, a random 16-byte salt and a 32-byte digest. This is an
+[OWASP-listed scrypt parameter set](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#scrypt),
+with approximately 16 MiB of working memory. Rows record
+`scrypt-16384-8-5-v1`; plaintext passwords are never persisted.
+
+The previous `pbkdf2-sha256-600000-v1` format remains readable on runtimes that
+support it. Deployed Cloudflare rejects PBKDF2 above 100,000 iterations even
+though local Workerd allows it; switching to Node PBKDF2 does not bypass the
+limit. A legacy hash is never reinterpreted as scrypt or silently downgraded.
+If such a legacy account exists on a restricted runtime, login returns
+503 `AUTH_UNAVAILABLE` and needs a separately authorized password-reset or
+credential-migration flow. The affected live database had zero users when this
+failure was investigated; do not assume that for other environments.
+
+Hashing failures return `AUTH_UNAVAILABLE`, distinct from D1 failures returning
+`DATABASE_UNAVAILABLE`. Logs contain only a diagnostic stage and error class,
+never raw errors, passwords, salts, hashes, tokens or SQL parameters.
 Sessions use independent random 32-byte tokens; D1 stores only their SHA-256
 hashes, user IDs and seven-day expiration timestamps. The browser receives
 `finance_session` with HttpOnly, SameSite=Lax, Path=/, Max-Age and Secure on HTTPS.

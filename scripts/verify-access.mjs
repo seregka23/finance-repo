@@ -173,6 +173,14 @@ import worker from '../../dist/worker.js';
 import { AuthService } from '../../dist/auth/auth.js';
 import { HouseholdAccessService } from '../../dist/households/households.js';
 import { CategoryService } from '../../dist/categories/categories.js';
+// Local Workerd does not enforce the deployed PBKDF2 cap. Model it here so
+// registration cannot regress to a locally passing, production-failing KDF.
+const deriveBits = crypto.subtle.deriveBits.bind(crypto.subtle);
+crypto.subtle.deriveBits = (algorithm, ...args) => {
+  if (algorithm?.name === 'PBKDF2' && algorithm.iterations > 100000)
+    throw new DOMException('PBKDF2 exceeds the deployed iteration limit', 'NotSupportedError');
+  return deriveBits(algorithm, ...args);
+};
 const auth = new AuthService(env.DB);
 const browserTokens = {};
 export default { async fetch(request,bindings,context) {
@@ -374,7 +382,7 @@ async function verify() {
         "SELECT email,password_algorithm,password_salt,password_hash FROM auth_users WHERE email='auth-check@example.invalid'",
       );
       assert.equal(stored[0].email, credentials.email);
-      assert.equal(stored[0].password_algorithm, "pbkdf2-sha256-600000-v1");
+      assert.equal(stored[0].password_algorithm, "scrypt-16384-8-5-v1");
       assert.notEqual(stored[0].password_hash, fixturePassword);
       assert.equal(stored[0].password_salt.length, 32);
       const sessionRows = await query("SELECT token_hash FROM auth_sessions");
