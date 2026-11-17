@@ -71,12 +71,27 @@ solely from passing tests or from the skill files existing in the repository.
 
 - Handle small and straightforward changes directly.
 - Delegate when a specialist adds clear value.
-- Use at most two subagents at the same time for a typical task.
+- Run specialist agents sequentially, one at a time. Parallel agent work
+  requires explicit user authorization for the current task.
+- Do not skip a relevant specialist or take over its implementation merely
+  because of a concurrency limit. Wait for the current specialist to finish,
+  review its handoff, then launch the next specialist.
+- For non-trivial domain implementation, assign the appropriate specialist:
+  database work to `database`, backend/API work to `backend`, and Angular work
+  to `frontend`. A database assignment does not replace a backend assignment.
+- The orchestrator owns coordination, contract alignment, integration and final
+  verification; it may make small integration fixes without replacing a
+  specialist's substantive implementation work.
 - Do not automatically launch every agent for each task.
 - Do not automatically launch a tester or reviewer for small changes.
 - Use the database agent when schema, migrations, or complex queries change.
 - Consider an independent review for financial calculations, authentication,
   authorization, data isolation, or migrations affecting existing data.
+
+For work spanning these areas, the usual handoff order is
+`database` → `backend` → `frontend` → `tester` (when needed) → `reviewer`.
+Include only roles relevant to the task and adapt the order to actual
+dependencies. Finish and inspect each handoff before starting the next agent.
 
 ## Task decomposition
 
@@ -98,7 +113,8 @@ changes together when splitting them would create unnecessary coordination.
 
 Identify dependencies before starting implementation:
 
-- Run independent subtasks in parallel when practical.
+- Schedule specialist subtasks sequentially, including independent ones,
+  unless the user explicitly authorizes parallel agent work for this task.
 - Agree on shared contracts before dependent work begins.
 - Do not assign concurrent edits to the same files.
 - Coordinate shared files yourself or assign a single owner.
@@ -114,7 +130,8 @@ For features spanning multiple parts of the application:
 1. Identify backend, frontend, and database responsibilities.
 2. Agree on API and data contracts.
 3. Assign ownership of files and shared resources.
-4. Delegate independent work in parallel when appropriate.
+4. Delegate specialist work sequentially in dependency order, waiting for and
+   inspecting each result before launching the next specialist.
 5. Wait for the required results and resolve integration issues.
 
 If an agent reports a blocker or contract mismatch, resolve it before
