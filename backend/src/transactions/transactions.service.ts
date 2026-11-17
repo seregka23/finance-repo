@@ -4,7 +4,7 @@ import type { Identity } from '../auth/auth.js';
 import { validateDate } from '../finance/calendar.js';
 import { recordConversion } from '../finance/fx.js';
 import { parseMinor, validateCurrency } from '../finance/money.js';
-import type { PostingInput } from './contracts.js';
+import type { PostingInput, TransferInput } from './contracts.js';
 import { PostingRepository } from './posting.repository.js';
 
 const invalid = () => apiError(400, 'INVALID_INPUT', 'Invalid input');
@@ -94,6 +94,102 @@ function posting(
     throw invalid();
   }
 }
+const transferKeys = [
+  'type',
+  'transactionDate',
+  'fromAccountId',
+  'toAccountId',
+  'debitAmountMinor',
+  'creditAmountMinor',
+  'debitCurrency',
+  'creditCurrency',
+  'fee',
+  'merchant',
+  'note',
+];
+export function transfer(
+  body: Record<string, unknown>,
+  replacement = false,
+): TransferInput {
+  fields(body, [...transferKeys, ...(replacement ? ['version'] : [])]);
+  const required = replacement
+    ? transferKeys
+    : transferKeys.filter((k) => !['fee', 'merchant', 'note'].includes(k));
+  if (required.some((k) => !(k in body)) || body.type !== 'transfer')
+    throw invalid();
+  try {
+    const fromAccountId = requiredText(body.fromAccountId, 200);
+    const toAccountId = requiredText(body.toAccountId, 200);
+    if (fromAccountId === toAccountId) throw invalid();
+    const debitAmount = parseMinor(body.debitAmountMinor);
+    const creditAmount = parseMinor(body.creditAmountMinor);
+    const debitCurrency = validateCurrency(body.debitCurrency);
+    const creditCurrency = validateCurrency(body.creditCurrency);
+    if (
+      debitAmount <= 0n ||
+      creditAmount <= 0n ||
+      (debitCurrency === creditCurrency && debitAmount !== creditAmount)
+    )
+      throw invalid();
+    let fee: TransferInput['fee'] = null;
+    if (body.fee != null) {
+      const f = fields(body.fee, [
+        'amountMinor',
+        'categoryId',
+        'exchangeRate',
+        'exchangeRateSource',
+      ]);
+      const amount = parseMinor(f.amountMinor);
+      if (amount <= 0n) throw invalid();
+      let exchangeRate: string | null = null;
+      let exchangeRateSource: string | null = null;
+      if (debitCurrency === 'RSD') {
+        if (f.exchangeRate != null || f.exchangeRateSource != null)
+          throw invalid();
+      } else {
+        const raw = requiredText(f.exchangeRate, 80);
+        if (!/^\d+(?:\.\d+)?$/.test(raw)) throw invalid();
+        const [integer, fraction = ''] = raw.split('.');
+        const whole = integer.replace(/^0+(?=\d)/, '');
+        const fractional = fraction.replace(/0+$/, '');
+        exchangeRate = fractional ? `${whole}.${fractional}` : whole;
+        exchangeRateSource = requiredText(f.exchangeRateSource, 200);
+      }
+      const converted = recordConversion(
+        amount,
+        debitCurrency,
+        exchangeRate,
+        exchangeRateSource,
+      );
+      if (
+        converted.rsdEquivalentMinor === null ||
+        BigInt(converted.rsdEquivalentMinor) <= 0n
+      )
+        throw invalid();
+      fee = {
+        amountMinor: amount.toString(),
+        categoryId: requiredText(f.categoryId, 200),
+        exchangeRate,
+        exchangeRateSource,
+      };
+    }
+    return {
+      type: 'transfer',
+      transactionDate: validateDate(body.transactionDate),
+      fromAccountId,
+      toAccountId,
+      debitAmountMinor: debitAmount.toString(),
+      creditAmountMinor: creditAmount.toString(),
+      debitCurrency,
+      creditCurrency,
+      fee,
+      merchant: optionalText(body.merchant ?? null, 200),
+      note: optionalText(body.note ?? null, 2000),
+    };
+  } catch {
+    throw invalid();
+  }
+}
 function requestKey(value: unknown): string {
   if (typeof value !== 'string' || !/^[\x21-\x7e]{1,128}$/.test(value))
     throw invalid();
@@ -103,20 +199,31 @@ function requestKey(value: unknown): string {
 export class TransactionsService {
   constructor(private readonly repository: PostingRepository) {}
   create(identity: Identity, householdId: string, body: unknown, key: unknown) {
+    const raw = fields(
+      body,
+      (body as { type?: unknown })?.type === 'transfer'
+        ? transferKeys
+        : inputKeys,
+    );
+    const normalized = raw.type === 'transfer' ? transfer(raw) : posting(raw);
     return this.repository.post(
       identity,
       householdId,
-      posting(fields(body, inputKeys)),
+      normalized,
       requestKey(key),
     );
   }
   edit(identity: Identity, householdId: string, id: string, body: unknown) {
-    const b = fields(body, [...inputKeys, 'version']);
+    const isTransfer = (body as { type?: unknown })?.type === 'transfer';
+    const b = fields(body, [
+      ...(isTransfer ? transferKeys : inputKeys),
+      'version',
+    ]);
     return this.repository.edit(
       identity,
       householdId,
       id,
-      posting(b, true),
+      isTransfer ? transfer(b, true) : posting(b, true),
       version(b.version),
     );
   }

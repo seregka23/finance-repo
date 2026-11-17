@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { TransactionsService } from './transactions.service.js';
+import { TransactionsService, transfer } from './transactions.service.js';
 import type { PostingRepository } from './posting.repository.js';
 import type { Identity } from '../auth/auth.js';
 
@@ -151,5 +151,97 @@ describe('transaction validation', () => {
     expect(repo.edit).toHaveBeenCalledWith(identity, 'h', 'id', base, 1);
     void service.void(identity, 'h', 'id', { version: 2 });
     expect(repo.void).toHaveBeenCalledWith(identity, 'h', 'id', 2);
+  });
+});
+
+describe('transfer normalization', () => {
+  const input = {
+    type: 'transfer',
+    transactionDate: '2024-02-29',
+    fromAccountId: 'from',
+    toAccountId: 'to',
+    debitAmountMinor: '100',
+    creditAmountMinor: '100',
+    debitCurrency: 'RSD',
+    creditCurrency: 'RSD',
+  };
+  it('normalizes a foreign-currency fee without deriving principal amounts', () => {
+    expect(
+      transfer({
+        ...input,
+        debitCurrency: 'EUR',
+        creditAmountMinor: '11700',
+        fee: {
+          amountMinor: '2',
+          categoryId: 'c',
+          exchangeRate: '00117.500',
+          exchangeRateSource: ' bank ',
+        },
+      }),
+    ).toMatchObject({
+      debitAmountMinor: '100',
+      creditAmountMinor: '11700',
+      fee: {
+        amountMinor: '2',
+        categoryId: 'c',
+        exchangeRate: '117.5',
+        exchangeRateSource: 'bank',
+      },
+    });
+  });
+  it.each([
+    { toAccountId: 'from' },
+    { debitAmountMinor: '01' },
+    { debitAmountMinor: '0' },
+    { creditAmountMinor: '101' },
+    { debitAmountMinor: '9007199254740992' },
+    { fee: { amountMinor: '1', categoryId: 'c', exchangeRate: '1' } },
+    { fee: { amountMinor: '1', categoryId: 'c', extra: true } },
+    {
+      debitCurrency: 'EUR',
+      fee: {
+        amountMinor: '1',
+        categoryId: 'c',
+        exchangeRate: '0.1',
+        exchangeRateSource: 'bank',
+      },
+    },
+    { extra: true },
+  ])('rejects invalid transfer %o', (change) => {
+    expect(() => transfer({ ...input, ...change })).toThrow();
+  });
+  it('routes normalized creates and replacements through the shared repository', () => {
+    const { service, repo } = setup();
+    void service.create(identity, 'h', input, 'key');
+    expect(repo.post).toHaveBeenCalledWith(
+      identity,
+      'h',
+      { ...input, fee: null, merchant: null, note: null },
+      'key',
+    );
+    expect(() => service.create(identity, 'h', input, 'bad key')).toThrow();
+    expect(() =>
+      service.edit(identity, 'h', 'id', { ...input, version: 0 }),
+    ).toThrow();
+    void service.edit(identity, 'h', 'id', {
+      ...input,
+      fee: null,
+      merchant: null,
+      note: null,
+      version: 3,
+    });
+    expect(repo.edit).toHaveBeenCalledWith(
+      identity,
+      'h',
+      'id',
+      { ...input, fee: null, merchant: null, note: null },
+      3,
+    );
+  });
+  it('requires all fields for replacement', () => {
+    expect(() => transfer(input, true)).toThrow();
+    expect(
+      transfer({ ...input, fee: null, merchant: null, note: null }, true).fee,
+    ).toBeNull();
   });
 });

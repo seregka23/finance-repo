@@ -27,6 +27,7 @@ model Household {
   updatedAt String @map("updated_at")
   members HouseholdMember[]
   categories Category[]
+  transactions Transaction[]
   @@map("households")
 }
 
@@ -103,6 +104,12 @@ model Transaction {
   parentTransactionId String? @map("parent_transaction_id")
   createdAt String @map("created_at")
   updatedAt String @map("updated_at")
+  household Household @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  postingDetails PostingDetails?
+  transferDetails TransferDetails?
+  parent Transaction? @relation("TransactionChildren", fields: [householdId, parentTransactionId], references: [householdId, id], onDelete: Restrict)
+  children Transaction[] @relation("TransactionChildren")
+  feeForTransfer TransferDetails? @relation("TransferFee")
   @@unique([householdId, id])
   @@map("transactions")
 }
@@ -290,5 +297,24 @@ model PostingDetails {
   rsdEquivalentMinor BigInt? @map("rsd_equivalent_minor")
   exchangeRate String? @map("exchange_rate")
   exchangeRateSource String? @map("exchange_rate_source")
+  transaction Transaction @relation(fields: [householdId, transactionId], references: [householdId, id], onDelete: Restrict)
+  @@unique([householdId, transactionId])
   @@map("posting_details")
+}
+
+model TransferDetails {
+  transactionId String @id @map("transaction_id")
+  householdId String @map("household_id")
+  fromAccountId String @map("from_account_id")
+  toAccountId String @map("to_account_id")
+  debitAmountMinor BigInt @map("debit_amount_minor")
+  creditAmountMinor BigInt @map("credit_amount_minor")
+  debitCurrency String @map("debit_currency")
+  creditCurrency String @map("credit_currency")
+  feeTransactionId String? @map("fee_transaction_id")
+  transaction Transaction @relation(fields: [householdId, transactionId], references: [householdId, id], onDelete: Restrict)
+  feeTransaction Transaction? @relation("TransferFee", fields: [householdId, feeTransactionId], references: [householdId, id], onDelete: Restrict)
+  @@unique([householdId, transactionId])
+  @@unique([householdId, feeTransactionId])
+  @@map("transfer_details")
 }

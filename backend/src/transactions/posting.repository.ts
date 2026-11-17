@@ -3,7 +3,17 @@ import { apiError, unavailable, type Identity } from '../auth/auth.js';
 import { DATABASE } from '../health.controller.js';
 import type { Database } from '../households/households.js';
 import { recordConversion } from '../finance/fx.js';
-import type { PostingInput, TransactionRecord } from './contracts.js';
+import type {
+  PostingInput,
+  TransactionRecord,
+  TransferInput,
+  TransferRecord,
+  AnyTransactionRecord,
+} from './contracts.js';
+import { PrismaService } from '../database/prisma.service.js';
+import type { Prisma } from '../generated/prisma/client.js';
+import type { Currency } from '../finance/money.js';
+import { TransferWrite } from './transfer-write.js';
 
 const recordSelect = `SELECT t.id, t.household_id AS householdId, t.type,
  t.transaction_date AS transactionDate, d.account_id AS accountId, t.category_id AS categoryId,
@@ -61,13 +71,130 @@ function translate(e: unknown): never {
       'Account balance would be invalid',
     ],
   ];
+  const transferErrors: [string, number, string, string][] = [
+    [
+      'transfer_member_ineligible',
+      404,
+      'HOUSEHOLD_NOT_FOUND',
+      'Household not found',
+    ],
+    [
+      'transfer_version_conflict',
+      409,
+      'VERSION_CONFLICT',
+      'Transaction was changed, is unavailable, or cannot be edited',
+    ],
+    [
+      'transfer_linked',
+      409,
+      'TRANSACTION_LINKED',
+      'Transaction has related records and cannot be changed',
+    ],
+    [
+      'transfer_account_ineligible',
+      409,
+      'ACCOUNT_NOT_ELIGIBLE',
+      'Account is not eligible',
+    ],
+    [
+      'transfer_fee_invalid',
+      409,
+      'CATEGORY_NOT_ELIGIBLE',
+      'Category is not eligible',
+    ],
+    [
+      'transfer_balance_invalid',
+      409,
+      'INSUFFICIENT_FUNDS',
+      'Account balance would be invalid',
+    ],
+  ];
+  errors.push(...transferErrors);
   for (const [needle, status, code, message] of errors)
     if (s.includes(needle)) throw apiError(status, code, message);
   throw unavailable();
 }
+const includes = {
+  postingDetails: true,
+  transferDetails: {
+    include: { feeTransaction: { include: { postingDetails: true } } },
+  },
+} as const;
+type ReadRow = Prisma.TransactionGetPayload<{ include: typeof includes }>;
+function mapRow(t: ReadRow): AnyTransactionRecord {
+  const version = Number(t.version);
+  if (!Number.isSafeInteger(version) || version < 1) throw unavailable();
+  const common = {
+    id: t.id,
+    householdId: t.householdId,
+    transactionDate: t.transactionDate,
+    merchant: t.merchant,
+    note: t.note,
+    authorMemberId: t.authorMemberId,
+    status: t.status as 'posted' | 'void',
+    version,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  };
+  if (t.type === 'transfer' && t.transferDetails) {
+    const d = t.transferDetails,
+      f = d.feeTransaction,
+      p = f?.postingDetails;
+    if (f && (!p || !f.categoryId)) throw unavailable();
+    return {
+      ...common,
+      type: 'transfer',
+      fromAccountId: d.fromAccountId,
+      toAccountId: d.toAccountId,
+      debitAmountMinor: d.debitAmountMinor.toString(),
+      creditAmountMinor: d.creditAmountMinor.toString(),
+      debitCurrency: d.debitCurrency as Currency,
+      creditCurrency: d.creditCurrency as Currency,
+      fee:
+        f && p
+          ? {
+              id: f.id,
+              accountId: p.accountId,
+              currency: p.currency as Currency,
+              amountMinor: p.amountMinor.toString(),
+              categoryId: f.categoryId!,
+              exchangeRate: p.exchangeRate,
+              exchangeRateSource: p.exchangeRateSource,
+              rsdEquivalentMinor: p.rsdEquivalentMinor?.toString() ?? null,
+            }
+          : null,
+    };
+  }
+  const p = t.postingDetails;
+  if (!p || !t.categoryId || !['expense', 'income', 'fee'].includes(t.type))
+    throw unavailable();
+  const posting = {
+    ...common,
+    type: t.type as 'expense' | 'income',
+    accountId: p.accountId,
+    categoryId: t.categoryId,
+    amountMinor: p.amountMinor.toString(),
+    currency: p.currency as Currency,
+    exchangeRate: p.exchangeRate,
+    exchangeRateSource: p.exchangeRateSource,
+    rsdEquivalentMinor: p.rsdEquivalentMinor?.toString() ?? null,
+  };
+  if (t.type === 'fee') {
+    if (!t.parentTransactionId) throw unavailable();
+    return {
+      ...posting,
+      type: 'fee',
+      parentTransactionId: t.parentTransactionId,
+    };
+  }
+  return posting;
+}
 @Injectable()
 export class PostingRepository {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly prisma: PrismaService,
+  ) {}
   private stmt(
     sql: string,
     ...values: (string | number | null)[]
@@ -95,9 +222,16 @@ export class PostingRepository {
   async post(
     identity: Identity,
     householdId: string,
-    input: PostingInput,
+    input: PostingInput | TransferInput,
     requestKey: string,
-  ): Promise<TransactionRecord> {
+  ): Promise<TransactionRecord | TransferRecord> {
+    if (input.type === 'transfer')
+      return new TransferWrite(this.db, this.batch.bind(this)).post(
+        identity,
+        householdId,
+        input,
+        requestKey,
+      );
     const id = crypto.randomUUID(),
       claim = crypto.randomUUID(),
       now = new Date().toISOString();
@@ -262,9 +396,17 @@ export class PostingRepository {
     identity: Identity,
     householdId: string,
     id: string,
-    input: PostingInput,
+    input: PostingInput | TransferInput,
     version: number,
-  ): Promise<TransactionRecord> {
+  ): Promise<TransactionRecord | TransferRecord> {
+    if (input.type === 'transfer')
+      return new TransferWrite(this.db, this.batch.bind(this)).change(
+        identity,
+        householdId,
+        id,
+        version,
+        input,
+      );
     return this.change(identity, householdId, id, version, input);
   }
   async void(
@@ -272,7 +414,22 @@ export class PostingRepository {
     householdId: string,
     id: string,
     version: number,
-  ): Promise<TransactionRecord> {
+  ): Promise<AnyTransactionRecord> {
+    const current = await this.get(identity, householdId, id);
+    if (current.type === 'transfer')
+      return new TransferWrite(this.db, this.batch.bind(this)).change(
+        identity,
+        householdId,
+        id,
+        version,
+        null,
+      );
+    if (current.type === 'fee')
+      throw apiError(
+        409,
+        'TRANSACTION_LINKED',
+        'Transaction has related records and cannot be changed',
+      );
     return this.change(identity, householdId, id, version, null);
   }
   private async change(
@@ -421,24 +578,34 @@ export class PostingRepository {
     const result = await this.batch(stmts);
     return result.at(-1)?.results?.[0] as unknown as TransactionRecord;
   }
+  private scope(identity: Identity, householdId: string) {
+    return {
+      householdId,
+      household: {
+        status: 'active',
+        members: {
+          some: { identitySubject: identity.subject, status: 'active' },
+        },
+      },
+    };
+  }
   async get(
     identity: Identity,
     householdId: string,
     id: string,
-  ): Promise<TransactionRecord> {
-    const result = await this.batch([
-      this.access(identity, householdId),
-      this.stmt(
-        `${recordSelect} WHERE t.household_id=? AND t.id=?`,
-        householdId,
-        id,
-      ),
-    ]);
-    const row = result[1].results?.[0] as unknown as
-      TransactionRecord | undefined;
-    if (!row)
-      throw apiError(404, 'TRANSACTION_NOT_FOUND', 'Transaction not found');
-    return row;
+  ): Promise<AnyTransactionRecord> {
+    try {
+      const row = await this.prisma.transaction.findFirst({
+        where: { ...this.scope(identity, householdId), id },
+        include: includes,
+      });
+      if (!row)
+        throw apiError(404, 'TRANSACTION_NOT_FOUND', 'Transaction not found');
+      return mapRow(row);
+    } catch (e) {
+      if (e instanceof Error && 'getStatus' in e) throw e;
+      throw unavailable();
+    }
   }
   async list(
     identity: Identity,
@@ -447,35 +614,58 @@ export class PostingRepository {
       limit: number;
       cursor: { transactionDate: string; id: string } | null;
     },
-  ): Promise<{ transactions: TransactionRecord[]; nextCursor: string | null }> {
-    const cursor = options.cursor;
-    const result = await this.batch([
-      this.access(identity, householdId),
-      this.stmt(
-        `${recordSelect} WHERE t.household_id=? AND (? IS NULL OR t.transaction_date<? OR (t.transaction_date=? AND t.id<?)) ORDER BY t.transaction_date DESC,t.id DESC LIMIT ?`,
-        householdId,
-        cursor?.transactionDate ?? null,
-        cursor?.transactionDate ?? null,
-        cursor?.transactionDate ?? null,
-        cursor?.id ?? null,
-        options.limit + 1,
-      ),
-    ]);
-    const rows = result[1].results as unknown as TransactionRecord[];
-    const transactions = rows.slice(0, options.limit),
-      last = transactions.at(-1);
-    const nextCursor =
-      rows.length > options.limit && last
-        ? btoa(
-            JSON.stringify({
-              transactionDate: last.transactionDate,
-              id: last.id,
-            }),
-          )
-            .replaceAll('+', '-')
-            .replaceAll('/', '_')
-            .replace(/=+$/, '')
-        : null;
-    return { transactions, nextCursor };
+  ): Promise<{
+    transactions: AnyTransactionRecord[];
+    nextCursor: string | null;
+  }> {
+    try {
+      const access = await this.prisma.household.findFirst({
+        where: {
+          id: householdId,
+          status: 'active',
+          members: {
+            some: { identitySubject: identity.subject, status: 'active' },
+          },
+        },
+        select: { id: true },
+      });
+      if (!access)
+        throw apiError(404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
+      const c = options.cursor;
+      const rows = await this.prisma.transaction.findMany({
+        where: {
+          ...this.scope(identity, householdId),
+          ...(c
+            ? {
+                OR: [
+                  { transactionDate: { lt: c.transactionDate } },
+                  { transactionDate: c.transactionDate, id: { lt: c.id } },
+                ],
+              }
+            : {}),
+        },
+        include: includes,
+        orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
+        take: options.limit + 1,
+      });
+      const transactions = rows.slice(0, options.limit).map(mapRow),
+        last = transactions.at(-1);
+      const nextCursor =
+        rows.length > options.limit && last
+          ? btoa(
+              JSON.stringify({
+                transactionDate: last.transactionDate,
+                id: last.id,
+              }),
+            )
+              .replaceAll('+', '-')
+              .replaceAll('/', '_')
+              .replace(/=+$/, '')
+          : null;
+      return { transactions, nextCursor };
+    } catch (e) {
+      if (e instanceof Error && 'getStatus' in e) throw e;
+      throw unavailable();
+    }
   }
 }
