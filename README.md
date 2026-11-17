@@ -343,3 +343,15 @@ Wrangler aliases the starter's missing optional NestJS packages to a module that
 rejects their import, preserving Nest's optional-package handling. Before adding
 class-validator/class-transformer, microservices or WebSockets, install the real
 package and remove its corresponding alias from `wrangler.jsonc`.
+
+## Transaction posting API
+
+Issue #9 adds atomic expense/income creation, idempotent retries, versioned edits
+and voids, and scoped cursor-paginated reads. See the
+[API contract](docs/api/transactions.md), [database design](docs/database/transactions.md)
+and [verification record](docs/verification/issue-9.md).
+
+Run `npm run verify:transactions` to build the backend and verify the production
+API against disposable local D1. Run `npm run verify:schema` to check migration
+upgrades and database constraints. Manual transaction forms follow in issue #13;
+account management follows in issue #10.

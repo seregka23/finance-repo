@@ -22,6 +22,9 @@ import {
   InfrastructureProbeController,
   InfrastructureProbeService,
 } from './infrastructure-probe.controller.js';
+import { TransactionsController } from './transactions/transactions.controller.js';
+import { TransactionsService } from './transactions/transactions.service.js';
+import { PostingRepository } from './transactions/posting.repository.js';
 import { DATABASE, HealthController } from './health.controller.js';
 
 @Module({
@@ -37,6 +40,7 @@ export class WorkerModule {
         HouseholdsController,
         WorkspaceController,
         CategoriesController,
+        TransactionsController,
         ...(probeEnabled ? [InfrastructureProbeController] : []),
       ],
       providers: [
@@ -47,6 +51,8 @@ export class WorkerModule {
         HouseholdsService,
         WorkspaceService,
         CategoryService,
+        TransactionsService,
+        PostingRepository,
         { provide: APP_FILTER, useClass: ApiErrorFilter },
         { provide: APP_GUARD, useClass: ApiAuthGuard },
         { provide: APP_GUARD, useClass: HouseholdGuard },
