@@ -104,8 +104,11 @@ IDs used by the normal deployment environments. Keep `backend/migrations` as the
 source of deployable SQL; Prisma generation does not apply D1 migrations.
 
 Preview URLs are public unless protected separately with Cloudflare Access. The
-app's normal registration and sign-in remain enabled. `preview_urls: false`
-controls Worker version URLs, not these branch previews.
+app's normal registration and sign-in remain enabled. The top-level
+`preview_urls: true` enables workers.dev URLs for previews. Keep the Worker's
+Preview URLs setting enabled in Cloudflare too; otherwise deployment succeeds
+but reports "no active URLs". Changing this routing setting does not require
+replacing the current site's deployed code.
 
 Existing preview branches need these repository changes and their own build
 settings updated if they were created with the old empty build command. New

@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "finance-repo",
   "workers_dev": true,
-  "preview_urls": false,
+  "preview_urls": true,
   "account_id": "32d0e852b83ed6fc374b1c53d97b5729",
   "main": "backend/dist/worker.js",
   "compatibility_date": "2026-11-16",
