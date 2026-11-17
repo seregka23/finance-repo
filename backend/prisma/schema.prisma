@@ -267,3 +267,26 @@ model AuthThrottle {
   attempts Int
   @@map("auth_throttles")
 }
+
+model PostingRequest {
+  id String @id
+  householdId String @map("household_id")
+  memberId String @map("member_id")
+  requestKey String @map("request_key")
+  payload String
+  responseJson String? @map("response_json")
+  @@unique([householdId, memberId, requestKey])
+  @@map("posting_requests")
+}
+
+model PostingDetails {
+  transactionId String @id @map("transaction_id")
+  householdId String @map("household_id")
+  accountId String @map("account_id")
+  amountMinor BigInt @map("amount_minor")
+  currency String
+  rsdEquivalentMinor BigInt? @map("rsd_equivalent_minor")
+  exchangeRate String? @map("exchange_rate")
+  exchangeRateSource String? @map("exchange_rate_source")
+  @@map("posting_details")
+}

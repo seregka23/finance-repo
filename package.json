@@ -25,6 +25,7 @@
     "verify:categories": "npm run build && node scripts/verify-categories.mjs",
     "verify:auth": "npm run build && node scripts/verify-auth.mjs",
     "verify:money": "npm run build --prefix backend && node scripts/verify-money.mjs",
+    "verify:transactions": "npm run build --prefix backend && node scripts/verify-transactions.mjs",
     "verify:prisma": "node scripts/verify-prisma-schema.mjs"
   },
   "devDependencies": {
