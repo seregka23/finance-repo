@@ -27,6 +27,7 @@
     "verify:auth": "npm run build && node scripts/verify-auth.mjs",
     "verify:money": "npm run build --prefix backend && node scripts/verify-money.mjs",
     "verify:transfers": "npm run build --prefix backend && node scripts/verify-transfers.mjs",
+    "verify:refunds": "npm run build --prefix backend && node scripts/verify-refunds.mjs",
     "verify:accounts": "npm run build --prefix backend && node scripts/verify-accounts.mjs",
     "verify:transactions": "npm run build --prefix backend && node scripts/verify-transactions.mjs",
     "verify:prisma": "node scripts/verify-prisma-schema.mjs"

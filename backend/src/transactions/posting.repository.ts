@@ -9,11 +9,14 @@ import type {
   TransferInput,
   TransferRecord,
   AnyTransactionRecord,
+  RefundInput,
+  RefundRecord,
 } from './contracts.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { Currency } from '../finance/money.js';
 import { TransferWrite } from './transfer-write.js';
+import { RefundWrite } from './refund-write.js';
 
 const recordSelect = `SELECT t.id, t.household_id AS householdId, t.type,
  t.transaction_date AS transactionDate, d.account_id AS accountId, t.category_id AS categoryId,
@@ -110,12 +113,64 @@ function translate(e: unknown): never {
     ],
   ];
   errors.push(...transferErrors);
+  errors.push(
+    [
+      'posting_refunds_conflict',
+      409,
+      'REFUND_CONFLICT',
+      'Purchase has active refunds',
+    ],
+    [
+      'refund_purchase_conflict',
+      409,
+      'REFUND_CONFLICT',
+      'Purchase is unavailable or has changed',
+    ],
+    [
+      'refund_snapshot_conflict',
+      409,
+      'REFUND_CONFLICT',
+      'Refunds have changed',
+    ],
+    [
+      'refund_version_conflict',
+      409,
+      'VERSION_CONFLICT',
+      'Refund has changed or is unavailable',
+    ],
+    [
+      'refund_linked',
+      409,
+      'TRANSACTION_LINKED',
+      'Transaction has related records and cannot be changed',
+    ],
+    [
+      'refund_account_or_amount_invalid',
+      409,
+      'ACCOUNT_NOT_ELIGIBLE',
+      'Account or amount is not eligible',
+    ],
+    [
+      'refund_ceiling_invalid',
+      409,
+      'REFUND_CONFLICT',
+      'Refund exceeds the purchase amount',
+    ],
+    [
+      'refund_balance_invalid',
+      409,
+      'INSUFFICIENT_FUNDS',
+      'Account balance would be invalid',
+    ],
+    ['refund_', 409, 'REFUND_CONFLICT', 'Refund could not be completed'],
+  );
   for (const [needle, status, code, message] of errors)
     if (s.includes(needle)) throw apiError(status, code, message);
   throw unavailable();
 }
 const includes = {
   postingDetails: true,
+  refundDetails: true,
   transferDetails: {
     include: { feeTransaction: { include: { postingDetails: true } } },
   },
@@ -166,7 +221,11 @@ function mapRow(t: ReadRow): AnyTransactionRecord {
     };
   }
   const p = t.postingDetails;
-  if (!p || !t.categoryId || !['expense', 'income', 'fee'].includes(t.type))
+  if (
+    !p ||
+    !t.categoryId ||
+    !['expense', 'income', 'fee', 'refund'].includes(t.type)
+  )
     throw unavailable();
   const posting = {
     ...common,
@@ -179,6 +238,14 @@ function mapRow(t: ReadRow): AnyTransactionRecord {
     exchangeRateSource: p.exchangeRateSource,
     rsdEquivalentMinor: p.rsdEquivalentMinor?.toString() ?? null,
   };
+  if (t.type === 'refund') {
+    if (!t.refundDetails) throw unavailable();
+    return {
+      ...posting,
+      type: 'refund',
+      purchaseTransactionId: t.refundDetails.purchaseTransactionId,
+    };
+  }
   if (t.type === 'fee') {
     if (!t.parentTransactionId) throw unavailable();
     return {
@@ -222,9 +289,16 @@ export class PostingRepository {
   async post(
     identity: Identity,
     householdId: string,
-    input: PostingInput | TransferInput,
+    input: PostingInput | TransferInput | RefundInput,
     requestKey: string,
-  ): Promise<TransactionRecord | TransferRecord> {
+  ): Promise<TransactionRecord | TransferRecord | RefundRecord> {
+    if (input.type === 'refund')
+      return new RefundWrite(this.db, this.prisma, this.batch.bind(this)).post(
+        identity,
+        householdId,
+        input,
+        requestKey,
+      );
     if (input.type === 'transfer')
       return new TransferWrite(this.db, this.batch.bind(this)).post(
         identity,
@@ -396,9 +470,15 @@ export class PostingRepository {
     identity: Identity,
     householdId: string,
     id: string,
-    input: PostingInput | TransferInput,
+    input: PostingInput | TransferInput | RefundInput,
     version: number,
-  ): Promise<TransactionRecord | TransferRecord> {
+  ): Promise<TransactionRecord | TransferRecord | RefundRecord> {
+    if (input.type === 'refund')
+      return new RefundWrite(
+        this.db,
+        this.prisma,
+        this.batch.bind(this),
+      ).change(identity, householdId, id, version, input);
     if (input.type === 'transfer')
       return new TransferWrite(this.db, this.batch.bind(this)).change(
         identity,
@@ -416,6 +496,12 @@ export class PostingRepository {
     version: number,
   ): Promise<AnyTransactionRecord> {
     const current = await this.get(identity, householdId, id);
+    if (current.type === 'refund')
+      return new RefundWrite(
+        this.db,
+        this.prisma,
+        this.batch.bind(this),
+      ).change(identity, householdId, id, version, null);
     if (current.type === 'transfer')
       return new TransferWrite(this.db, this.batch.bind(this)).change(
         identity,
