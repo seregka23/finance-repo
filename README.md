@@ -380,3 +380,18 @@ adjustments, currency locking, archive/restore and movement history. See the
 [UI guide](docs/ui/accounts.md) and [verification](docs/verification/issue-10.md).
 Run `npm run verify:accounts` for disposable local D1 API checks after building;
 `node scripts/verify-accounts-ui.mjs` exercises the actual UI in Chromium.
+
+## Frontend languages
+
+Use the language selector above the workspace to switch between English,
+Russian and Serbian (Latin), including before signing in. The browser remembers
+the choice on this device. On a first visit, the app uses a supported browser
+language and falls back to English. Household data and account/category names
+retain their saved values.
+
+UI dates and exact minor-unit amounts follow the selected language. See the
+[localization guide](docs/frontend-localization.md) for translation conventions
+and [verification](docs/verification/frontend-localization.md) for checks.
+Run `npm run verify:localization` for Chromium/accessibility checks against a
+disposable local Worker/D1 fixture. An installed Chromium is required; use
+`CHROMIUM_EXECUTABLE_PATH` to select its executable.

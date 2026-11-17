@@ -4,6 +4,9 @@ import { vi } from 'vitest';
 import { App } from './app';
 import { Api, ApiError } from './api';
 
+beforeEach(() => localStorage.setItem('family-finance-language', 'en'));
+afterEach(() => localStorage.removeItem('family-finance-language'));
+
 describe('household session', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -30,14 +33,24 @@ describe('household session', () => {
   });
   it('registers with matching passwords and refreshes the session', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
-      if (String(url).endsWith('/auth/config')) return new Response(JSON.stringify({ configured: true, signInUrl: null, signOutUrl: null }));
-      if (String(url).endsWith('/auth/register')) return new Response(JSON.stringify({ user: { email: 'a@example.com' } }), { status: 201 });
-      if (String(url).endsWith('/session') && fetchMock.mock.calls.some(([path]) => String(path).endsWith('/auth/register'))) {
+      if (String(url).endsWith('/auth/config'))
+        return new Response(
+          JSON.stringify({ configured: true, signInUrl: null, signOutUrl: null }),
+        );
+      if (String(url).endsWith('/auth/register'))
+        return new Response(JSON.stringify({ user: { email: 'a@example.com' } }), { status: 201 });
+      if (
+        String(url).endsWith('/session') &&
+        fetchMock.mock.calls.some(([path]) => String(path).endsWith('/auth/register'))
+      ) {
         return new Response(JSON.stringify({ user: { email: 'a@example.com' }, households: [] }));
       }
       return new Response('{}', { status: 401 });
     });
-    await TestBed.configureTestingModule({ imports: [App], providers: [provideRouter([])] }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [App],
+      providers: [provideRouter([])],
+    }).compileComponents();
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await vi.waitFor(() => {
@@ -45,20 +58,34 @@ describe('household session', () => {
       expect(fixture.nativeElement.textContent).toContain('Create account');
     });
     const element = fixture.nativeElement as HTMLElement;
-    const button = Array.from(element.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Create account')!;
+    const button = Array.from(element.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Create account',
+    )!;
     button.click();
     fixture.detectChanges();
-    const set = (selector: string, value: string) => { element.querySelector<HTMLInputElement>(selector)!.value = value; };
+    const set = (selector: string, value: string) => {
+      element.querySelector<HTMLInputElement>(selector)!.value = value;
+    };
     set('#auth-email', 'a@example.com');
     set('#auth-password', 'longpassword123');
     set('#auth-confirmation', 'differentpassword');
-    element.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    element
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     fixture.detectChanges();
     expect(element.textContent).toContain('Passwords do not match');
     set('#auth-confirmation', 'longpassword123');
-    element.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    element
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await fixture.whenStable();
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/register', expect.objectContaining({ method: 'POST', body: JSON.stringify({ email: 'a@example.com', password: 'longpassword123' }) }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/auth/register',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: 'a@example.com', password: 'longpassword123' }),
+      }),
+    );
     expect(TestBed.inject(Api).session()?.user.email).toBe('a@example.com');
   });
   it('preserves a selected household only while it remains in the session', async () => {

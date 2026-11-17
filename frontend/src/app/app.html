@@ -14,13 +14,13 @@
       ><span>Family Finance</span>
     </div>
     @if (api.session()) {
-      <nav class="nav" aria-label="Main navigation">
+      <nav class="nav" [attr.aria-label]="i18n.t('Main navigation')">
         @for (item of navigation; track item.label) {
           <a
             [routerLink]="item.path"
             routerLinkActive="active"
             ariaCurrentWhenActive="page"
-            [attr.aria-label]="item.label"
+            [attr.aria-label]="i18n.t(item.label)"
           >
             <svg
               class="nav-icon"
@@ -33,7 +33,7 @@
               stroke-linejoin="round"
             >
               <path [attr.d]="item.icon" /></svg
-            ><span>{{ item.label }}</span>
+            ><span>{{ i18n.t(item.label) }}</span>
           </a>
         }
       </nav>
@@ -42,20 +42,35 @@
           api.session()!.user.email.charAt(0).toUpperCase()
         }}</span>
         <div>
-          <strong>Signed in</strong><small>{{ api.session()!.user.email }}</small>
+          <strong>{{ i18n.t('Signed in') }}</strong><small>{{ api.session()!.user.email }}</small>
         </div>
       </div>
     }
   </aside>
   <main>
     <div class="top">
+      <div class="language-selector">
+        <label for="app-language">{{ i18n.t('Language') }}</label>
+        <select
+          id="app-language"
+          class="field"
+          [value]="i18n.language()"
+          (change)="changeLanguage($event)"
+        >
+          <option value="en">English</option>
+          <option value="ru">Русский</option>
+          <option value="sr">Srpski (latinica)</option>
+        </select>
+      </div>
       <span
-        >Family Finance @if (api.session()) { <span aria-hidden="true"> / </span>
-        <strong>{{ currentTitle() }}</strong> }</span
-      >
+        >Family Finance
+        @if (api.session()) {
+          <span aria-hidden="true"> / </span> <strong>{{ i18n.t(currentTitle()) }}</strong>
+        }
+      </span>
       @if (api.session() && api.session()!.households.length > 1) {
         <div class="global-household">
-          <label for="household-selector">Household</label>
+          <label for="household-selector">{{ i18n.t('Household') }}</label>
           <select
             id="household-selector"
             class="field"
@@ -70,51 +85,57 @@
       }
       @if (api.session()) {
         <details class="profile-menu">
-          <summary>Profile</summary>
+          <summary>{{ i18n.t('Profile') }}</summary>
           <div class="profile-links">
             <p>{{ api.session()!.user.email }}</p>
-            <a routerLink="/settings">Household settings</a>
-            <a routerLink="/categories">Categories</a>
-            <button type="button" class="textbtn" (click)="logout()">Sign out</button>
+            <a routerLink="/settings">{{ i18n.t('Household settings') }}</a>
+            <a routerLink="/categories">{{ i18n.t('Categories') }}</a>
+            <button type="button" class="textbtn" (click)="logout()">
+              {{ i18n.t('Sign out') }}
+            </button>
           </div>
         </details>
       }
     </div>
     <div class="content">
       @if (loading()) {
-        <p role="status">Loading your workspace…</p>
+        <p role="status">{{ i18n.t('Loading your workspace…') }}</p>
       } @else {
         @if (error()) {
           <div class="alert" role="alert">
-            {{ error() }} <button class="textbtn" type="button" (click)="load()">Retry</button>
-            <a href="/">Reload page</a>
+            {{ i18n.t(error()) }}
+            <button class="textbtn" type="button" (click)="load()">{{ i18n.t('Retry') }}</button>
+            <a href="/">{{ i18n.t('Reload page') }}</a>
           </div>
         }
         @if (config() && !config()!.configured) {
           <section class="welcome panel">
             <h1>Family Finance</h1>
             <p>
-              Sign-in is temporarily unavailable. Please try again.
+              {{ i18n.t('Sign-in is temporarily unavailable. Please try again.') }}
             </p>
-            <button class="btn" (click)="load()">Try again</button>
+            <button class="btn" (click)="load()">{{ i18n.t('Try again') }}</button>
           </section>
         } @else if (config()?.configured && !api.session()) {
           <app-auth-panel [invite]="invite()" />
         } @else if (api.session()) {
           @if (invite()) {
             <section class="panel invite-review">
-              <h2>Household invitation</h2>
+              <h2>{{ i18n.t('Household invitation') }}</h2>
               <p>
-                You are signed in as {{ api.session()!.user.email }}. Accept this invitation to join
-                the household.
+                {{
+                  i18n.t(
+                    'You are signed in as {email}. Accept this invitation to join the household.',
+                    { email: api.session()!.user.email }
+                  )
+                }}
               </p>
               <div class="actions">
                 <button class="btn primary" [disabled]="accepting()" (click)="accept()">
-                  {{ accepting() ? 'Accepting…' : 'Accept invitation' }}</button><button
-                  class="btn"
-                  (click)="dismissInvite()"
-                >
-                  Dismiss
+                  {{
+                    accepting() ? i18n.t('Accepting…') : i18n.t('Accept invitation')
+                  }}</button><button class="btn" (click)="dismissInvite()">
+                  {{ i18n.t('Dismiss') }}
                 </button>
               </div>
             </section>

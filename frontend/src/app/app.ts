@@ -1,4 +1,5 @@
-import { Component, inject, signal } from '@angular/core';
+import { Localization } from './localization';
+import { Component, effect, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api, ApiError, AuthConfig } from './api';
@@ -10,6 +11,7 @@ import { AuthPanel } from './auth-panel/auth-panel';
   host: { '(window:hashchange)': 'captureInvitation()' },
 })
 export class App {
+  protected readonly i18n = inject(Localization);
   protected readonly api = inject(Api);
   protected readonly currentTitle = signal('Dashboard');
   protected readonly navigation = [
@@ -28,6 +30,9 @@ export class App {
     },
     { label: 'Reports', path: '/reports', icon: 'M4 20h16M6 17v-5M12 17V5M18 17V9' },
   ];
+  protected changeLanguage(event: Event): void {
+    this.i18n.set((event.target as HTMLSelectElement).value as 'en' | 'ru' | 'sr');
+  }
   protected selectHousehold(event: Event): void {
     this.api.selectedId.set((event.target as HTMLSelectElement).value);
   }
@@ -38,6 +43,11 @@ export class App {
   protected readonly invite = signal(sessionStorage.getItem('family-invite') ?? '');
   protected readonly accepting = signal(false);
   constructor() {
+    effect(() => {
+      document.documentElement.lang =
+        this.i18n.language() === 'sr' ? 'sr-Latn' : this.i18n.language();
+      document.title = `${this.i18n.t(this.currentTitle())} | Family Finance`;
+    });
     this.router.events.pipe(takeUntilDestroyed()).subscribe((event) => {
       if (event instanceof NavigationEnd) {
         document.querySelector<HTMLDetailsElement>('.profile-menu')?.removeAttribute('open');
@@ -45,8 +55,9 @@ export class App {
         this.currentTitle.set(
           path === '/settings'
             ? 'Household settings'
-            : path === '/categories' ? 'Categories'
-            : (this.navigation.find((item) => item.path === path)?.label ?? 'Dashboard'),
+            : path === '/categories'
+              ? 'Categories'
+              : (this.navigation.find((item) => item.path === path)?.label ?? 'Dashboard'),
         );
         setTimeout(() => document.querySelector<HTMLElement>('.content h1')?.focus());
       }

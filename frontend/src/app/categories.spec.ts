@@ -4,6 +4,9 @@ import { vi } from 'vitest';
 import { Api } from './api';
 import { Categories } from './categories';
 import { CategoriesService, Category } from './categories.service';
+
+beforeEach(() => localStorage.setItem('family-finance-language', 'en'));
+afterEach(() => localStorage.removeItem('family-finance-language'));
 const row = (name: string, status: 'active' | 'archived' = 'active'): Category => ({
   id: '1',
   name,

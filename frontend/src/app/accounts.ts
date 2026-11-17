@@ -1,3 +1,4 @@
+import { Localization } from './localization';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -9,6 +10,7 @@ import {
   Currency,
   decimalToMinor,
   formatMinor,
+  formatCalendarDate,
   Movement,
 } from './accounts.service';
 import { Workspace } from './workspace';
@@ -19,6 +21,7 @@ import { Workspace } from './workspace';
   styleUrl: './accounts.css',
 })
 export class Accounts {
+  protected readonly i18n = inject(Localization);
   protected readonly api = inject(Api);
   private readonly service = inject(AccountsService);
   private readonly workspace = inject(Workspace);
@@ -40,7 +43,11 @@ export class Accounts {
   protected readonly busy = signal(false);
   protected readonly editing = signal(false);
   protected readonly adjustmentReview = signal(false);
-  protected readonly format = formatMinor;
+  protected readonly format = (value: string, currency: string) =>
+    formatMinor(value, currency, this.i18n.locale());
+  protected dateOnly(value: string): string {
+    return formatCalendarDate(value, this.i18n.locale());
+  }
   protected readonly form = new FormGroup({
     name: new FormControl('', {
       nonNullable: true,
@@ -126,7 +133,9 @@ export class Accounts {
     return !!id && !this.members().some((m) => m.id === id && m.status === 'active');
   }
   protected owner(id: string | null): string {
-    return id ? (this.members().find((m) => m.id === id)?.email ?? 'Former member') : 'Household';
+    return id
+      ? (this.members().find((m) => m.id === id)?.email ?? this.i18n.t('Former member'))
+      : this.i18n.t('Household');
   }
   protected setStatus(event: Event): void {
     this.status.set((event.target as HTMLSelectElement).value as 'all' | 'active' | 'archived');
@@ -224,7 +233,7 @@ export class Accounts {
   }
   protected async save(): Promise<void> {
     const v = this.form.getRawValue();
-    const opening = decimalToMinor(v.opening);
+    const opening = decimalToMinor(v.opening, false, this.i18n.locale());
     const row = this.editing() ? this.selected() : null;
     if (!v.name.trim() || v.name.trim().length > 100 || (!row && (opening === null || !v.date))) {
       this.error.set(
@@ -280,7 +289,7 @@ export class Accounts {
   protected async adjust(row: Account): Promise<void> {
     if (this.historyLoading()) return;
     const { amount, date } = this.adjustment.getRawValue();
-    const minor = decimalToMinor(amount, true);
+    const minor = decimalToMinor(amount, true, this.i18n.locale());
     if (minor === null || minor === '0' || !date) {
       this.error.set('Enter a nonzero signed change with at most two decimal places and a date.');
       return;

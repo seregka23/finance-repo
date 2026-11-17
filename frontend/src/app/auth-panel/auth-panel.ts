@@ -1,3 +1,4 @@
+import { Localization } from '../localization';
 import { Component, inject, input, signal } from '@angular/core';
 import { Api, ApiError } from '../api';
 
@@ -6,6 +7,7 @@ import { Api, ApiError } from '../api';
   templateUrl: './auth-panel.html',
 })
 export class AuthPanel {
+  protected readonly i18n = inject(Localization);
   private readonly api = inject(Api);
   readonly invite = input('');
   protected readonly authMode = signal<'login' | 'register' | null>(null);
@@ -37,7 +39,7 @@ export class AuthPanel {
       await this.api.refreshSession();
       this.authMode.set(null);
     } catch (e) {
-      this.authError.set(e instanceof ApiError ? e.message : await this.api.handleError(e));
+      this.authError.set(await this.api.handleError(e));
     } finally {
       this.authPending.set(false);
     }
