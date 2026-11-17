@@ -1,0 +1,15 @@
+{
+  "checks": [
+    "no-household guidance leads to real household creation",
+    "desktop: all six routes, first-use states, titles and current links",
+    "desktop: transaction chooser keyboard containment, Escape and focus restoration",
+    "mobile: all six routes, first-use states, titles and current links",
+    "mobile: transaction chooser keyboard containment, Escape and focus restoration",
+    "profile settings entry, refresh and browser history",
+    "loading, failure and retry remain distinct from empty data",
+    "320px reflow and changing households closes the dialog"
+  ],
+  "axe": "Zero WCAG A/AA violations in 12 route states, two chooser states, settings and 320px household switching",
+  "pageErrors": [],
+  "fixture": "actual local Worker/D1 with generated signed identities"
+}

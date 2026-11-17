@@ -1,0 +1,176 @@
+<div class="pagehead">
+  <div>
+    <h1 tabindex="-1">{{ page }}</h1>
+    <p>Your household finances, in one place.</p>
+  </div>
+  @if ((page === 'Dashboard' || page === 'Transactions') && household()) {
+    <button class="btn primary" type="button" (click)="open($event)">Add transaction</button>
+  }
+</div>
+@if (!household()) {
+  <section class="panel">
+    <h2>Create your household</h2>
+    <p class="sub">Create a household to start managing your finances together.</p>
+    <a class="btn primary" routerLink="/settings">Create household</a>
+  </section>
+} @else if (workspace.loading()) {
+  <p role="status">Loading {{ page.toLowerCase() }}…</p>
+} @else if (workspace.error()) {
+  <div class="alert" role="alert">
+    {{ workspace.error() }}
+    <button class="textbtn" type="button" (click)="workspace.load()">Retry</button>
+  </div>
+} @else if (workspace.data(); as data) {
+  @switch (page) {
+    @case ('Dashboard') {
+      @if (
+        data.counts.accounts === 0 &&
+        data.counts.transactions === 0 &&
+        data.counts.accountMovements === 0
+      ) {
+        <section class="panel balance-panel">
+          <h2>Household balance</h2>
+          <p class="amount">
+            0.00 <span>{{ household()!.baseCurrency }}</span>
+          </p>
+          <p class="sub">No accounts or activity yet.</p>
+          <div class="cashflow">
+            <p>
+              Income this month <strong>0.00 {{ household()!.baseCurrency }}</strong>
+            </p>
+            <p>
+              Expenses this month <strong>0.00 {{ household()!.baseCurrency }}</strong>
+            </p>
+          </div>
+        </section>
+        <div class="cols workspace-cols">
+          <section class="panel">
+            <h2>Get started</h2>
+            <p class="sub">Add an account to begin organizing your household finances.</p>
+            <a class="btn" routerLink="/accounts">Go to accounts</a>
+          </section>
+          <section class="panel">
+            <h2>Recent activity</h2>
+            <app-results-state message="No transactions yet." />
+          </section>
+        </div>
+      } @else {
+        <section class="panel">
+          <h2>Household overview</h2>
+          <p class="sub">
+            {{ data.counts.accounts }} accounts · {{ data.counts.transactions }} transactions ·
+            {{ data.counts.accountMovements }} account movements
+          </p>
+          <p>Balances and reports will be available in a future update.</p>
+        </section>
+      }
+    }
+    @case ('Accounts') {
+      <section class="panel">
+        <h2>Accounts</h2>
+        @if (data.counts.accounts === 0) {
+          <p class="empty">
+            No accounts yet. Add an account when account management becomes available.
+          </p>
+        } @else {
+          <p class="sub">
+            {{ data.counts.accounts }} saved accounts. Account details are coming soon.
+          </p>
+        }
+        <button class="btn primary" type="button" disabled aria-describedby="account-reason">
+          Add account
+        </button>
+        <p class="hint" id="account-reason">Account management is coming soon.</p>
+      </section>
+    }
+    @case ('Transactions') {
+      <section class="panel">
+        <h2>Transactions</h2>
+        @if (data.counts.accounts === 0) {
+          <p class="empty">Start by adding an account before recording transactions.</p>
+          <a class="btn" routerLink="/accounts">Go to accounts</a>
+        } @else if (data.counts.transactions === 0) {
+          <app-results-state message="No transactions yet." />
+        } @else {
+          <p class="sub">
+            {{ data.counts.transactions }} saved transactions. Transaction details are coming soon.
+          </p>
+        }
+      </section>
+    }
+    @case ('Budgets') {
+      <section class="panel">
+        <h2>{{ month() }} budget</h2>
+        @if (data.counts.plans === 0) {
+          <p class="empty">No budget plans yet for this household.</p>
+        } @else {
+          <p class="sub">{{ data.counts.plans }} saved plans. Budget details are coming soon.</p>
+        }
+        <button class="btn primary" type="button" disabled aria-describedby="budget-reason">
+          Add budget
+        </button>
+        <p class="hint" id="budget-reason">Budget management is coming soon.</p>
+      </section>
+    }
+    @case ('Reserves') {
+      <section class="panel">
+        <h2>Reserves</h2>
+        @if (data.counts.accounts === 0) {
+          <p class="empty">Add an account to start planning reserves.</p>
+          <a class="btn" routerLink="/accounts">Go to accounts</a>
+        } @else if (data.counts.reserves === 0) {
+          <p class="empty">No reserves yet.</p>
+        } @else {
+          <p class="sub">
+            {{ data.counts.reserves }} saved reserves. Reserve details are coming soon.
+          </p>
+        }
+        <button class="btn primary" type="button" disabled aria-describedby="reserve-reason">
+          Create reserve
+        </button>
+        <p class="hint" id="reserve-reason">Reserve management is coming soon.</p>
+      </section>
+    }
+    @case ('Reports') {
+      <section class="panel">
+        <h2>Reports</h2>
+        @if (data.counts.transactions === 0) {
+          <p class="empty">
+            No transactions yet. Reports will help you understand your activity once transactions
+            are available.
+          </p>
+        } @else {
+          <p class="sub">
+            {{ data.counts.transactions }} saved transactions. Reports are coming soon.
+          </p>
+        }
+      </section>
+    }
+  }
+}
+<dialog
+  #chooser
+  aria-labelledby="chooser-title"
+  (close)="restore()"
+  (keydown)="containFocus($event)"
+>
+  <div class="dialogbody">
+    <div class="dialoghead">
+      <h2 id="chooser-title">Add transaction</h2>
+      <button class="btn" type="button" (click)="close()">Close</button>
+    </div>
+    <p class="sub">Choose how to add a transaction. These options are coming soon.</p>
+    @if (workspace.data()?.counts?.accounts === 0) {
+      <p class="notice">
+        Add an account before recording transactions.
+        <a routerLink="/accounts" (click)="close()">Go to accounts</a>
+      </p>
+    }
+    <div class="chooser">
+      <button class="btn" disabled>Enter manually</button
+      ><button class="btn" disabled>Paste SMS</button
+      ><button class="btn" disabled>Upload image</button>
+    </div>
+    <p class="hint">Transaction entry and imports will be available in a future update.</p>
+  </div>
+</dialog>
