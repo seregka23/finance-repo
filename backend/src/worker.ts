@@ -10,11 +10,7 @@ let application: Promise<INestApplication> | undefined;
 
 function initialize(): Promise<INestApplication> {
   application ??= NestFactory.create(
-    WorkerModule.register(env.DB, env.INFRASTRUCTURE_PROBE_ENABLED === 'true', {
-      teamDomain: env.ACCESS_TEAM_DOMAIN,
-      audience: env.ACCESS_AUDIENCE,
-      appOrigin: env.ACCESS_APP_ORIGIN,
-    }),
+    WorkerModule.register(env.DB, env.INFRASTRUCTURE_PROBE_ENABLED === 'true'),
     {
       logger: ['error', 'warn'],
       abortOnError: false,
@@ -48,7 +44,17 @@ export default {
       // Initialize in the first request context, never perform I/O at module load.
       await initialize();
       if (!handler.fetch) throw new Error('Node HTTP handler is unavailable');
-      return await handler.fetch(request, bindings, context);
+      const headers = new Headers(request.headers);
+      headers.set('x-internal-request-origin', new URL(request.url).origin);
+      headers.set(
+        'x-internal-client-ip',
+        request.headers.get('cf-connecting-ip') || 'unknown',
+      );
+      return await handler.fetch(
+        new Request(request, { headers }) as typeof request,
+        bindings,
+        context,
+      );
     } catch {
       return Response.json({ status: 'error' }, { status: 503 });
     }

@@ -137,7 +137,7 @@ async function run() {
     if (fixture.exitCode !== null) throw new Error(logs);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  assert.ok(base, "Signed Worker/D1 fixture startup failed: " + logs);
+  assert.ok(base, "Native Worker/D1 fixture startup failed: " + logs);
   const owner = await cookie("owner"),
     member = await cookie("member"),
     stranger = await cookie("newcomer");
@@ -625,7 +625,7 @@ async function run() {
         checks,
         pageErrors,
         axe: "Zero WCAG A/AA violations at 1440, 390 and 320px",
-        fixture: "Actual local Worker/D1, signed synthetic identities",
+        fixture: "Actual local Worker/D1, native synthetic accounts",
       },
       null,
       2,

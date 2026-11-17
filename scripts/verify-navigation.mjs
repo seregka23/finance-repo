@@ -115,8 +115,8 @@ async function run() {
       throw new Error(`Signed fixture failed:\n${logs}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  assert.ok(base, `Timed out waiting for signed fixture:\n${logs}`);
-  console.log("Signed Worker/D1 fixture passed its access checks.");
+  assert.ok(base, `Timed out waiting for native fixture:\n${logs}`);
+  console.log("Native Worker/D1 fixture passed its access checks.");
   browser = await chromium.launch({
     executablePath: await executable(),
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
@@ -451,7 +451,7 @@ async function run() {
         checks,
         axe: "Zero WCAG A/AA violations in 12 route states, two chooser states, settings and 320px household switching",
         pageErrors,
-        fixture: "actual local Worker/D1 with generated signed identities",
+        fixture: "actual local Worker/D1 with native synthetic accounts",
       },
       null,
       2,

@@ -619,3 +619,14 @@ dialog::backdrop {
     padding-bottom: 150px;
   }
 }
+
+.auth-choices { margin-top: 20px; }
+.welcome .auth-choices .btn, .welcome form .btn { margin-top: 0; }
+.welcome h2 { margin-top: 24px; }
+.welcome form .alert { margin: 0; }
+.auth-switch { margin-top: 18px; }
+.profile-links button { display: block; padding: 8px 0; }
+@media (max-width: 680px) { .welcome { margin: 16px auto; padding: 24px; } }
+.welcome form .field {
+  border-color: var(--muted);
+}

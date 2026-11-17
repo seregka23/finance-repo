@@ -14,8 +14,6 @@ const temporary = await mkdtemp(
 const configPath = join(temporary, "wrangler.json");
 const persistence = join(temporary, "state");
 const wrangler = join(root, "node_modules/wrangler/bin/wrangler.js");
-const issuer = "https://verification.cloudflareaccess.com";
-const audience = "local-verification-only";
 const portProbe = createServer();
 await new Promise((resolve) => portProbe.listen(0, "127.0.0.1", resolve));
 const port = portProbe.address().port;
@@ -40,28 +38,25 @@ for (const key of [
 let server;
 let base;
 let groups = 0;
-const keys = await crypto.subtle.generateKey(
-  {
-    name: "RSASSA-PKCS1-v1_5",
-    modulusLength: 2048,
-    publicExponent: new Uint8Array([1, 0, 1]),
-    hash: "SHA-256",
-  },
-  true,
-  ["sign", "verify"],
-);
-const publicKey = {
-  ...(await crypto.subtle.exportKey("jwk", keys.publicKey)),
-  kid: "fixture-key",
-  alg: "RS256",
-  use: "sig",
-};
-const encode = (value) =>
-  Buffer.from(JSON.stringify(value)).toString("base64url");
-async function token(user, claims = {}, header = {}) {
-  const now = Math.floor(Date.now() / 1000);
-  const data = `${encode({ alg: "RS256", kid: "fixture-key", ...header })}.${encode({ iss: issuer, aud: [audience], sub: user, email: `${user}@example.invalid`, type: "app", iat: now - 1, exp: now + 3600, ...claims })}`;
-  return `${data}.${Buffer.from(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", keys.privateKey, new TextEncoder().encode(data))).toString("base64url")}`;
+const fixturePassword = "Fixture-password-2026!";
+const tokens = new Map();
+async function token(user) {
+  if (tokens.has(user)) return tokens.get(user);
+  const response = await fetch(base + "/api/v1/auth/register", {
+    method: "POST",
+    headers: { Origin: appOrigin, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: `${user}@example.invalid`,
+      password: fixturePassword,
+    }),
+  });
+  assert.equal(response.status, 201, await response.clone().text());
+  const setCookie = response.headers.get("set-cookie");
+  assert.match(setCookie, /HttpOnly/i);
+  assert.match(setCookie, /SameSite=Lax/i);
+  const value = setCookie.split(";")[0].slice("finance_session=".length);
+  tokens.set(user, value);
+  return value;
 }
 function launch(args) {
   const child = spawn(process.execPath, [wrangler, ...args], {
@@ -117,6 +112,16 @@ async function command(args) {
 }
 const common = ["--config", configPath, "--local", "--persist-to", persistence];
 async function query(sql) {
+  if (base) {
+    const response = await fetch(base + "/_verification/sql", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sql }),
+    });
+    const data = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(data));
+    return data.results;
+  }
   const output = await command([
     "d1",
     "execute",
@@ -135,20 +140,11 @@ async function check(name, fn) {
 }
 async function api(
   path,
-  jwt,
-  {
-    method = "GET",
-    body,
-    status = 200,
-    origin = appOrigin,
-    cookie = false,
-  } = {},
+  sessionToken,
+  { method = "GET", body, status = 200, origin = appOrigin } = {},
 ) {
   const headers = {};
-  if (jwt)
-    headers[cookie ? "Cookie" : "Cf-Access-Jwt-Assertion"] = cookie
-      ? `CF_Authorization=${jwt}`
-      : jwt;
+  if (sessionToken) headers.Cookie = `finance_session=${sessionToken}`;
   if (!["GET", "HEAD"].includes(method) && origin !== null)
     headers.Origin = origin;
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -169,36 +165,32 @@ async function api(
   return value;
 }
 async function prepare() {
-  // This is an isolated verification entrypoint, never the deployed worker.
-  // Only public test keys are injected. JWT validation is the production service.
-  const browserTokens = serving
-    ? {
-        owner: await token("owner"),
-        member: await token("member"),
-        newcomer: await token("newcomer"),
-      }
-    : {};
+  // Isolated fixture: production native authentication, no provider or bypass.
   const fixture = `
 import 'reflect-metadata';
-import { httpServerHandler } from 'cloudflare:node';
 import { env } from 'cloudflare:workers';
-import { NestFactory } from '@nestjs/core';
-import { WorkerModule } from '../../dist/worker.module.js';
-import { AccessAuthService } from '../../dist/auth/auth.js';
+import worker from '../../dist/worker.js';
+import { AuthService } from '../../dist/auth/auth.js';
 import { HouseholdAccessService } from '../../dist/households/households.js';
 import { CategoryService } from '../../dist/categories/categories.js';
-const settings = {teamDomain:${JSON.stringify(issuer)},audience:${JSON.stringify(audience)},appOrigin:${JSON.stringify(appOrigin)},fetch:async () => Response.json({keys:[${JSON.stringify(publicKey)}]})};
-const auth = new AccessAuthService(settings);
-const handler = httpServerHandler({port:3000});
-let application;
+const auth = new AuthService(env.DB);
+const browserTokens = {};
 export default { async fetch(request,bindings,context) {
   const url = new URL(request.url);
-  const browserTokens = ${JSON.stringify(browserTokens)};
+  if(url.pathname === '/_verification/sql' && request.method === 'POST') {
+    const {sql} = await request.json();
+    return Response.json(await env.DB.prepare(sql).all());
+  }
+  if(url.pathname === '/_verification/browser-tokens' && request.method === 'POST') {
+    const proposed = await request.json();
+    for (const [user, value] of Object.entries(proposed)) { await auth.verify(value); browserTokens[user] = value; }
+    return Response.json({ok:true});
+  }
   const browserUser = url.pathname.startsWith('/_verification/sign-in/') ? url.pathname.split('/').at(-1) : '';
-  if(browserTokens[browserUser]) return new Response(null,{status:302,headers:{Location:'/', 'Set-Cookie':'CF_Authorization='+browserTokens[browserUser]+'; Path=/; HttpOnly; SameSite=Strict'}});
+  if(browserTokens[browserUser]) return new Response(null,{status:302,headers:{Location:'/', 'Set-Cookie':'finance_session='+browserTokens[browserUser]+'; Path=/; HttpOnly; SameSite=Strict'}});
   if(url.pathname === '/_verification/batch') {
     try {
-      const identity = await auth.verify(request.headers.get('cf-access-jwt-assertion') || '');
+      const identity = await auth.verify(request.headers.get('cookie')?.split(';').map(s=>s.trim()).find(s=>s.startsWith('finance_session='))?.slice('finance_session='.length) || '');
       const body = await request.json();
       const access = new HouseholdAccessService(env.DB);
       const results = await access.batch(identity,body.householdId,body.role || 'member',[
@@ -210,9 +202,9 @@ export default { async fetch(request,bindings,context) {
   }
   if(url.pathname.startsWith('/_verification/category-')) {
     try {
-      const cookie=request.headers.get('cookie')?.split(';').map(s=>s.trim()).find(s=>s.startsWith('CF_Authorization='))?.slice('CF_Authorization='.length);
-      const identity=await auth.verify(request.headers.get('cf-access-jwt-assertion')||cookie||'');
-      if(request.method !== 'GET' && request.headers.get('origin') !== settings.appOrigin) return Response.json({error:{code:'INVALID_ORIGIN'}},{status:403});
+      const cookie=request.headers.get('cookie')?.split(';').map(s=>s.trim()).find(s=>s.startsWith('finance_session='))?.slice('finance_session='.length);
+      const identity=await auth.verify(cookie||'');
+      if(request.method !== 'GET' && request.headers.get('origin') !== new URL(request.url).origin) return Response.json({error:{code:'INVALID_ORIGIN'}},{status:403});
       const body=request.method==='GET'?Object.fromEntries(url.searchParams):await request.json();
       const access=new HouseholdAccessService(env.DB);
       const categories=new CategoryService(env.DB,access);
@@ -237,12 +229,7 @@ export default { async fetch(request,bindings,context) {
       return Response.json(request.method==='GET'?results[1].results:{ok:true});
     } catch(e) { return Response.json(e.getResponse?.()||{error:{code:'VERIFICATION_FAILED'}},{status:e.getStatus?.()||500}); }
   }
-  application ??= NestFactory.create(WorkerModule.register(env.DB,false,settings),{logger:['error','warn'],abortOnError:false}).then(async app => {
-    app.use('/api/v1',(_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();});
-    await app.listen(3000); return app;
-  });
-  await application;
-  return handler.fetch(request,bindings,context);
+  return worker.fetch(request,bindings,context);
 } };
 `;
   await writeFile(join(temporary, "worker.mjs"), fixture);
@@ -319,7 +306,7 @@ async function verify() {
     stranger = await token("stranger");
   let household, other, invitation, memberId;
   await check(
-    "signed Access sessions, cookie transport, claim validation and CSRF",
+    "native sessions, cookie transport, malformed input and CSRF",
     async () => {
       assert.equal((await api("/api/v1/auth/config")).configured, true);
       const malformed = await fetch(base + "/api/v1/households", {
@@ -327,7 +314,7 @@ async function verify() {
         headers: {
           Origin: appOrigin,
           "Content-Type": "application/json",
-          "Cf-Access-Jwt-Assertion": owner,
+          Cookie: `finance_session=${owner}`,
         },
         body: "{",
         signal: AbortSignal.timeout(15000),
@@ -337,22 +324,11 @@ async function verify() {
       assert.equal(malformed.headers.get("cache-control"), "no-store");
       assert.deepEqual((await api("/api/v1/session", owner)).households, []);
       assert.equal(
-        (await api("/api/v1/session", owner, { cookie: true })).user.email,
+        (await api("/api/v1/session", owner)).user.email,
         "owner@example.invalid",
       );
       await api("/api/v1/session", null, { status: 401 });
-      const now = Math.floor(Date.now() / 1000);
-      for (const bad of [
-        await token("owner", { iss: "https://evil.invalid" }),
-        await token("owner", { aud: ["other"] }),
-        await token("owner", { exp: now - 1 }),
-        await token("owner", { nbf: now + 100 }),
-        await token("owner", { iat: now + 100 }),
-        await token("owner", { email: "" }),
-        await token("owner", {}, { alg: "none" }),
-        await token("owner", {}, { kid: "unknown" }),
-        owner + "x",
-      ])
+      for (const bad of ["invalid", "x".repeat(8193), owner + "x"])
         await api("/api/v1/session", bad, { status: 401 });
       for (const origin of [null, "https://evil.invalid"])
         await api("/api/v1/households", owner, {
@@ -361,6 +337,112 @@ async function verify() {
           origin,
           status: 403,
         });
+    },
+  );
+  await check(
+    "registration, password hashing, logout revocation and expiry",
+    async () => {
+      const credentials = {
+        email: "auth-check@example.invalid",
+        password: fixturePassword,
+      };
+      const post = async (
+        path,
+        body = credentials,
+        expected = 200,
+        headers = {},
+      ) => {
+        const response = await fetch(base + "/api/v1/auth/" + path, {
+          method: "POST",
+          headers: {
+            Origin: appOrigin,
+            "Content-Type": "application/json",
+            ...headers,
+          },
+          body: JSON.stringify(body),
+        });
+        assert.equal(response.status, expected, await response.clone().text());
+        return response;
+      };
+      const registered = await post("register", credentials, 201);
+      const cookie = registered.headers.get("set-cookie").split(";")[0];
+      assert.match(
+        registered.headers.get("set-cookie"),
+        /HttpOnly.*SameSite=Lax.*Path=\//,
+      );
+      const stored = await query(
+        "SELECT email,password_algorithm,password_salt,password_hash FROM auth_users WHERE email='auth-check@example.invalid'",
+      );
+      assert.equal(stored[0].email, credentials.email);
+      assert.equal(stored[0].password_algorithm, "pbkdf2-sha256-600000-v1");
+      assert.notEqual(stored[0].password_hash, fixturePassword);
+      assert.equal(stored[0].password_salt.length, 32);
+      const sessionRows = await query("SELECT token_hash FROM auth_sessions");
+      assert.ok(!sessionRows.some((row) => cookie.endsWith(row.token_hash)));
+      await post(
+        "login",
+        { ...credentials, password: "Incorrect-password!" },
+        401,
+      );
+      await post("register", credentials, 401);
+      await post(
+        "register",
+        { ...credentials, email: "short@example.invalid", password: "short" },
+        400,
+      );
+      const loggedIn = await post("login", {
+        ...credentials,
+        email: credentials.email.toUpperCase(),
+      });
+      const freshCookie = loggedIn.headers.get("set-cookie").split(";")[0];
+      assert.notEqual(freshCookie, cookie);
+      const logout = await post("logout", {}, 204, { Cookie: freshCookie });
+      assert.match(logout.headers.get("set-cookie"), /Max-Age=0/);
+      await api(
+        "/api/v1/session",
+        freshCookie.slice("finance_session=".length),
+        { status: 401 },
+      );
+      await query(
+        "UPDATE auth_sessions SET expires_at=unixepoch()-1 WHERE user_id=(SELECT id FROM auth_users WHERE email='auth-check@example.invalid')",
+      );
+      await api("/api/v1/session", cookie.slice("finance_session=".length), {
+        status: 401,
+      });
+      for (const path of ["register", "login", "logout"]) {
+        await post(path, credentials, 403, {
+          Origin: "https://evil.invalid",
+          "x-internal-request-origin": "https://evil.invalid",
+        });
+      }
+      const legacy = await fetch(base + "/api/v1/session", {
+        headers: {
+          "Cf-Access-Jwt-Assertion": owner,
+          Cookie: "CF_Authorization=" + owner,
+        },
+      });
+      assert.equal(legacy.status, 401);
+      await query("DELETE FROM auth_throttles");
+    },
+  );
+  await check(
+    "persistent email and network throttles reject excess attempts",
+    async () => {
+      for (let i = 0; i < 11; i++)
+        await api("/api/v1/auth/login", null, {
+          method: "POST",
+          body: { email: "missing@example.invalid", password: fixturePassword },
+          status: i < 10 ? 401 : 429,
+        });
+      await query(
+        "UPDATE auth_throttles SET attempts=100 WHERE key LIKE 'ip:%'",
+      );
+      await api("/api/v1/auth/login", null, {
+        method: "POST",
+        body: { email: "different@example.invalid", password: fixturePassword },
+        status: 429,
+      });
+      await query("DELETE FROM auth_throttles");
     },
   );
   await check(
@@ -549,8 +631,14 @@ async function verify() {
   await check(
     "D1 batch access checks share writes and reject other households",
     async () => {
-      const write = async (jwt, id, value, hh = household.id, status = 200) =>
-        api("/_verification/batch", jwt, {
+      const write = async (
+        sessionToken,
+        id,
+        value,
+        hh = household.id,
+        status = 200,
+      ) =>
+        api("/_verification/batch", sessionToken, {
           method: "POST",
           body: { householdId: hh, id, value },
           status,
@@ -571,7 +659,7 @@ async function verify() {
     },
   );
   await check(
-    "revocation rejects existing signed sessions and rolls back guarded writes",
+    "revocation rejects existing native sessions and rolls back guarded writes",
     async () => {
       await api(
         `/api/v1/households/${household.id}/members/${memberId}`,
@@ -618,7 +706,7 @@ async function verify() {
             {
               method: "POST",
               headers: {
-                "Cf-Access-Jwt-Assertion": owner,
+                Cookie: `finance_session=${owner}`,
                 Origin: appOrigin,
                 "Content-Type": "application/json",
               },
@@ -655,7 +743,7 @@ async function verify() {
           const response = await fetch(base + "/api/v1/invitations/accept", {
             method: "POST",
             headers: {
-              "Cf-Access-Jwt-Assertion": member,
+              Cookie: `finance_session=${member}`,
               Origin: appOrigin,
               "Content-Type": "application/json",
             },
@@ -714,6 +802,11 @@ for (const [name, code] of [
 try {
   await verify();
   if (serving) {
+    await token("newcomer");
+    await api("/_verification/browser-tokens", null, {
+      method: "POST",
+      body: Object.fromEntries(tokens),
+    });
     console.log(
       `Browser verification fixture ready: ${base}/_verification/sign-in/owner (also member/newcomer). Ctrl-C cleans up.`,
     );

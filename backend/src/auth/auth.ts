@@ -1,21 +1,22 @@
 import {
+  Body,
   CanActivate,
   Controller,
   ExecutionContext,
   Get,
+  HttpCode,
   HttpException,
   Inject,
   Injectable,
+  Post,
+  Req,
+  Res,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
+import { timingSafeEqual } from 'node:crypto';
+import { DATABASE } from '../health.controller.js';
+import type { Database } from '../households/households.js';
 
-export const AUTH_CONFIG = Symbol('AUTH_CONFIG');
-export interface AuthConfig {
-  teamDomain?: string;
-  audience?: string;
-  appOrigin?: string;
-  fetch?: typeof fetch;
-}
 export interface Identity {
   subject: string;
   email: string;
@@ -32,232 +33,317 @@ export const unauthenticated = () =>
   apiError(401, 'UNAUTHENTICATED', 'Authentication required');
 export const unavailable = () =>
   apiError(503, 'DATABASE_UNAVAILABLE', 'Database is unavailable');
-function validConfig(config: AuthConfig): boolean {
+const invalidCredentials = () =>
+  apiError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
+const encoder = new TextEncoder();
+const algorithm = 'pbkdf2-sha256-600000-v1';
+const lifetime = 7 * 24 * 60 * 60;
+function hex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+function randomHex(length: number): string {
+  return hex(crypto.getRandomValues(new Uint8Array(length)));
+}
+async function digest(value: string): Promise<string> {
+  return hex(
+    new Uint8Array(
+      await crypto.subtle.digest('SHA-256', encoder.encode(value)),
+    ),
+  );
+}
+async function passwordHash(password: string, salt: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  );
+  const bytes = Uint8Array.from(salt.match(/../g) ?? [], (b) =>
+    parseInt(b, 16),
+  );
+  return hex(
+    new Uint8Array(
+      await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', hash: 'SHA-256', salt: bytes, iterations: 600000 },
+        key,
+        256,
+      ),
+    ),
+  );
+}
+function equal(a: string, b: string): boolean {
+  // Password hashes have a fixed public size; compare their bytes in native code.
+  return (
+    a.length === b.length &&
+    timingSafeEqual(encoder.encode(a), encoder.encode(b))
+  );
+}
+function credentials(body: unknown): { email: string; password: string } {
+  if (!body || typeof body !== 'object' || Array.isArray(body))
+    throw apiError(400, 'INVALID_INPUT', 'Invalid input');
+  const b = body as Record<string, unknown>;
+  if (
+    Object.keys(b).some((k) => k !== 'email' && k !== 'password') ||
+    typeof b.email !== 'string' ||
+    b.email.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email) ||
+    typeof b.password !== 'string' ||
+    b.password.length < 12 ||
+    b.password.length > 128
+  )
+    throw apiError(400, 'INVALID_INPUT', 'Invalid input');
+  return { email: b.email.toLowerCase(), password: b.password };
+}
+function cookieToken(req: Request): string {
+  const cookies = (req.get('cookie') ?? '')
+    .split(';')
+    .map((s) => s.trim())
+    .filter((s) => s.startsWith('finance_session='));
+  return cookies.length === 1
+    ? cookies[0].slice('finance_session='.length)
+    : '';
+}
+function origin(req: Request): URL {
   try {
-    const team = new URL(config.teamDomain ?? '');
-    const origin = new URL(config.appOrigin ?? '');
-    return (
-      team.protocol === 'https:' &&
-      /^[a-z0-9-]+\.cloudflareaccess\.com$/i.test(team.hostname) &&
-      team.origin === config.teamDomain &&
-      !!config.audience &&
-      config.audience.length <= 256 &&
-      origin.origin === config.appOrigin &&
-      (origin.protocol === 'https:' ||
-        (origin.protocol === 'http:' &&
-          ['localhost', '127.0.0.1'].includes(origin.hostname)))
-    );
+    const raw = req.get('x-internal-request-origin') ?? '';
+    const value = new URL(raw);
+    if (
+      value.origin !== raw ||
+      !(
+        value.protocol === 'https:' ||
+        (value.protocol === 'http:' &&
+          ['localhost', '127.0.0.1', '[::1]'].includes(value.hostname))
+      )
+    )
+      throw new Error();
+    return value;
   } catch {
-    return false;
+    throw apiError(403, 'INVALID_ORIGIN', 'Invalid request origin');
   }
 }
-function decode(value: string): Uint8Array<ArrayBuffer> {
-  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('Invalid encoding');
-  const s = atob(
-    value.replace(/-/g, '+').replace(/_/g, '/') +
-      '='.repeat((4 - (value.length % 4)) % 4),
-  );
-  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+interface UserRow {
+  id: string;
+  email: string;
+  password_algorithm: string;
+  password_salt: string;
+  password_hash: string;
 }
-function json(value: string): Record<string, unknown> {
-  const parsed: unknown = JSON.parse(
-    new TextDecoder('utf-8', { fatal: true }).decode(decode(value)),
-  );
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
-    throw new Error('Invalid JSON');
-  return parsed as Record<string, unknown>;
-}
-type AccessKey = JsonWebKey & { kid?: string; alg?: string; use?: string };
 @Injectable()
-export class AccessAuthService {
-  private keys: AccessKey[] = [];
-  private expiresAt = 0;
-  private lastFetchAt = 0;
-
-  private async keyFor(kid: string): Promise<AccessKey> {
-    const now = Date.now();
-    const find = () =>
-      this.keys.find(
-        (key) =>
-          key.kid === kid &&
-          key.kty === 'RSA' &&
-          (!key.alg || key.alg === 'RS256') &&
-          (!key.use || key.use === 'sig'),
-      );
-    let key = now < this.expiresAt ? find() : undefined;
-    if (key) return key;
-    // Set the cooldown before starting I/O. Concurrent requests fail closed rather
-    // than sharing an in-flight Worker request's I/O across request contexts.
-    if (now - this.lastFetchAt < 30_000)
-      throw new Error('Key refresh cooldown');
-    this.lastFetchAt = now;
-    const abort = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
+export class AuthService {
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  async verify(token: string): Promise<Identity> {
+    if (!/^[a-f0-9]{64}$/.test(token)) throw unauthenticated();
     try {
-      const jwks = await Promise.race([
-        (async () => {
-          const response = await (this.config.fetch ?? fetch)(
-            `${this.config.teamDomain}/cdn-cgi/access/certs`,
-            { redirect: 'error', signal: abort.signal },
-          );
-          if (!response.ok) throw new Error('Key fetch failed');
-          const length = Number(response.headers.get('content-length'));
-          if (length > 65_536) throw new Error('Key set too large');
-          const body = await response.text();
-          if (body.length > 65_536) throw new Error('Key set too large');
-          return JSON.parse(body) as { keys?: unknown };
-        })(),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => {
-            abort.abort();
-            reject(new Error('Key fetch timeout'));
-          }, 5_000);
-        }),
-      ]);
-      if (
-        !Array.isArray(jwks.keys) ||
-        jwks.keys.length > 100 ||
-        !jwks.keys.every(
-          (k: unknown) =>
-            k !== null && typeof k === 'object' && !Array.isArray(k),
+      const user = await this.db
+        .prepare(
+          'SELECT u.id, u.email FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?',
         )
-      )
-        throw new Error('Invalid key set');
-      this.keys = jwks.keys as AccessKey[];
-      this.expiresAt = Date.now() + 300_000;
-      key = find();
-      if (!key) throw new Error('Unknown key');
-      return key;
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
+        .bind(await digest(token), Math.floor(Date.now() / 1000))
+        .first<{ id: string; email: string }>();
+      if (!user) throw unauthenticated();
+      return { subject: `user:${user.id}`, email: user.email };
+    } catch (e) {
+      if (e instanceof HttpException) throw e;
+      throw unavailable();
     }
   }
-
-  constructor(@Inject(AUTH_CONFIG) private readonly config: AuthConfig) {}
-  configured(): boolean {
-    return validConfig(this.config);
-  }
-  async verify(token: string): Promise<Identity> {
-    if (!this.configured())
-      throw apiError(
-        503,
-        'AUTH_NOT_CONFIGURED',
-        'Authentication is not configured',
-      );
+  async throttle(email: string, ip: string): Promise<void> {
+    if (!ip || ip.length > 128) throw unavailable();
+    const now = Math.floor(Date.now() / 1000);
+    const keys = [`ip:${await digest(ip)}`, `email:${await digest(email)}`];
     try {
-      if (token.length > 8192) throw new Error('Token too large');
-      const parts = token.split('.');
-      if (parts.length !== 3) throw new Error('Malformed token');
-      const header = json(parts[0]);
-      const claims = json(parts[1]);
+      const update = (key: string) =>
+        this.db
+          .prepare(
+            'INSERT INTO auth_throttles (key, window_start, attempts) VALUES (?, ?, 1) ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN window_start<=? THEN 1 ELSE attempts+1 END, window_start=CASE WHEN window_start<=? THEN ? ELSE window_start END',
+          )
+          .bind(key, now, now - 900, now - 900, now);
+      const results = await this.db.batch([
+        ...keys.map(update),
+        ...keys.map((key) =>
+          this.db
+            .prepare('SELECT attempts FROM auth_throttles WHERE key=?')
+            .bind(key),
+        ),
+        this.db
+          .prepare(
+            'DELETE FROM auth_throttles WHERE key IN (SELECT key FROM auth_throttles WHERE window_start<=? LIMIT 100)',
+          )
+          .bind(now - 900),
+        this.db
+          .prepare(
+            'DELETE FROM auth_sessions WHERE token_hash IN (SELECT token_hash FROM auth_sessions WHERE expires_at<=? LIMIT 100)',
+          )
+          .bind(now),
+      ]);
       if (
-        header.crit !== undefined ||
-        header.alg !== 'RS256' ||
-        typeof header.kid !== 'string' ||
-        !header.kid ||
-        header.kid.length > 256
+        results
+          .slice(2, 4)
+          .some(
+            (r, index) =>
+              Number(
+                (r.results?.[0] as { attempts?: number } | undefined)
+                  ?.attempts ?? 999,
+              ) > (index === 0 ? 100 : 10),
+          )
       )
-        throw new Error('Invalid header');
+        throw apiError(429, 'RATE_LIMITED', 'Too many attempts');
+    } catch (e) {
+      if (e instanceof HttpException) throw e;
+      throw unavailable();
+    }
+  }
+  async authenticate(
+    body: unknown,
+    ip: string,
+    register: boolean,
+  ): Promise<{ email: string; token: string }> {
+    let parsed: { email: string; password: string };
+    try {
+      parsed = credentials(body);
+    } catch (error) {
+      await this.throttle('', ip);
+      throw error;
+    }
+    const { email, password } = parsed;
+    await this.throttle(email, ip);
+    try {
+      const user = await this.db
+        .prepare(
+          'SELECT id,email,password_algorithm,password_salt,password_hash FROM auth_users WHERE email=?',
+        )
+        .bind(email)
+        .first<UserRow>();
+      const salt =
+        register && !user
+          ? randomHex(16)
+          : (user?.password_salt ?? '00000000000000000000000000000000');
+      const computed = await passwordHash(password, salt);
+      if (
+        register
+          ? !!user
+          : !user ||
+            user.password_algorithm !== algorithm ||
+            !equal(computed, user.password_hash)
+      )
+        throw invalidCredentials();
+      const id = register ? crypto.randomUUID() : user!.id;
+      const token = randomHex(32);
       const now = Math.floor(Date.now() / 1000);
-      const aud = claims.aud;
-      if (
-        claims.iss !== this.config.teamDomain ||
-        !(
-          aud === this.config.audience ||
-          (Array.isArray(aud) && aud.includes(this.config.audience))
-        ) ||
-        typeof claims.exp !== 'number' ||
-        !Number.isFinite(claims.exp) ||
-        claims.exp <= now ||
-        typeof claims.iat !== 'number' ||
-        !Number.isFinite(claims.iat) ||
-        claims.iat > now ||
-        claims.iat >= claims.exp ||
-        (claims.nbf !== undefined &&
-          (typeof claims.nbf !== 'number' ||
-            !Number.isFinite(claims.nbf) ||
-            claims.nbf > now)) ||
-        typeof claims.sub !== 'string' ||
-        !claims.sub ||
-        claims.sub.length > 256 ||
-        typeof claims.email !== 'string' ||
-        claims.email.length > 254 ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(claims.email)
-      )
-        throw new Error('Invalid claims');
-      const key = await this.keyFor(header.kid);
-      const imported = await crypto.subtle.importKey(
-        'jwk',
-        key,
-        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-        false,
-        ['verify'],
+      const statements = [];
+      if (register)
+        statements.push(
+          this.db
+            .prepare(
+              'INSERT INTO auth_users (id,email,password_algorithm,password_salt,password_hash,created_at) VALUES (?,?,?,?,?,?)',
+            )
+            .bind(id, email, algorithm, salt, computed, now),
+        );
+      statements.push(
+        this.db
+          .prepare(
+            'INSERT INTO auth_sessions (token_hash,user_id,expires_at,created_at) VALUES (?,?,?,?)',
+          )
+          .bind(await digest(token), id, now + lifetime, now),
       );
-      if (
-        !(await crypto.subtle.verify(
-          'RSASSA-PKCS1-v1_5',
-          imported,
-          decode(parts[2]),
-          new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
-        ))
-      )
-        throw new Error('Invalid signature');
-      return {
-        subject: JSON.stringify([claims.iss, claims.sub]),
-        email: claims.email.toLowerCase(),
-      };
+      statements.push(
+        this.db
+          .prepare('DELETE FROM auth_throttles WHERE key=?')
+          .bind(`email:${await digest(email)}`),
+      );
+      await this.db.batch(statements);
+      return { email, token };
+    } catch (e) {
+      if (e instanceof HttpException) throw e;
+      if (String(e).includes('UNIQUE constraint failed: auth_users.email'))
+        throw invalidCredentials();
+      throw unavailable();
+    }
+  }
+  async logout(token: string): Promise<void> {
+    if (!/^[a-f0-9]{64}$/.test(token)) return;
+    try {
+      await this.db
+        .prepare('DELETE FROM auth_sessions WHERE token_hash=?')
+        .bind(await digest(token))
+        .run();
     } catch {
-      throw unauthenticated();
+      throw unavailable();
     }
   }
 }
 @Controller('api/v1/auth')
 export class AuthController {
-  constructor(
-    private readonly auth: AccessAuthService,
-    @Inject(AUTH_CONFIG) private readonly settings: AuthConfig,
-  ) {}
+  constructor(private readonly auth: AuthService) {}
   @Get('config') config() {
-    const configured = this.auth.configured();
-    return {
-      configured,
-      signInUrl: configured ? `${this.settings.appOrigin}/` : null,
-      signOutUrl: configured
-        ? `${this.settings.appOrigin}/cdn-cgi/access/logout`
-        : null,
-    };
+    return { configured: true, signInUrl: null, signOutUrl: null };
+  }
+  private async signIn(
+    body: unknown,
+    req: Request,
+    res: Response,
+    register: boolean,
+  ) {
+    const result = await this.auth.authenticate(
+      body,
+      req.get('x-internal-client-ip') ?? '',
+      register,
+    );
+    res.setHeader(
+      'Set-Cookie',
+      `finance_session=${result.token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${lifetime}${origin(req).protocol === 'https:' ? '; Secure' : ''}`,
+    );
+    return { user: { email: result.email } };
+  }
+  @Post('register') register(
+    @Body() body: unknown,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.signIn(body, req, res, true);
+  }
+  @Post('login') @HttpCode(200) login(
+    @Body() body: unknown,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.signIn(body, req, res, false);
+  }
+  @Post('logout') @HttpCode(204) async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.auth.logout(cookieToken(req));
+    res.setHeader(
+      'Set-Cookie',
+      `finance_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${origin(req).protocol === 'https:' ? '; Secure' : ''}`,
+    );
   }
 }
 @Injectable()
 export class ApiAuthGuard implements CanActivate {
-  constructor(
-    private readonly auth: AccessAuthService,
-    @Inject(AUTH_CONFIG) private readonly config: AuthConfig,
-  ) {}
+  constructor(private readonly auth: AuthService) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<AuthRequest>();
-    const path = request.path.toLowerCase();
-    if (!path.startsWith('/api/v1/') || path === '/api/v1/auth/config')
-      return true;
-    if (!this.auth.configured())
-      throw apiError(
-        503,
-        'AUTH_NOT_CONFIGURED',
-        'Authentication is not configured',
-      );
+    const req = context.switchToHttp().getRequest<AuthRequest>();
+    const path = req.path.toLowerCase();
+    if (!path.startsWith('/api/v1/')) return true;
+    const trustedOrigin = origin(req);
     if (
-      !['GET', 'HEAD', 'OPTIONS'].includes(request.method) &&
-      request.get('origin') !== this.config.appOrigin
+      !['GET', 'HEAD', 'OPTIONS'].includes(req.method) &&
+      req.get('origin') !== trustedOrigin.origin
     )
       throw apiError(403, 'INVALID_ORIGIN', 'Invalid request origin');
-    const assertion = request.get('cf-access-jwt-assertion');
-    const cookie = request
-      .get('cookie')
-      ?.split(';')
-      .map((s) => s.trim())
-      .find((s) => s.startsWith('CF_Authorization='))
-      ?.slice('CF_Authorization='.length);
-    request.identity = await this.auth.verify(assertion || cookie || '');
+    if (
+      [
+        '/api/v1/auth/config',
+        '/api/v1/auth/register',
+        '/api/v1/auth/login',
+        '/api/v1/auth/logout',
+      ].includes(path)
+    )
+      return true;
+    req.identity = await this.auth.verify(cookieToken(req));
     return true;
   }
 }

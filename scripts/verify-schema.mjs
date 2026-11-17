@@ -375,6 +375,7 @@ async function verify() {
           "0002_household_finance_schema.sql",
           "0003_household_access.sql",
           "0004_category_eligibility.sql",
+          "0005_native_auth.sql",
         ],
       );
       assert.deepEqual(
