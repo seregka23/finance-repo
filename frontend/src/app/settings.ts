@@ -1,11 +1,19 @@
+import { Localization } from './localization';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { DatePipe } from '@angular/common';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Api, Household, Members } from './api';
-@Component({ imports: [ReactiveFormsModule, DatePipe, RouterLink], templateUrl: './settings.html' })
+@Component({ imports: [ReactiveFormsModule, RouterLink], templateUrl: './settings.html' })
 export class Settings {
+  protected readonly i18n = inject(Localization);
   protected readonly api = inject(Api);
+  protected dateTime(value: string): string {
+    return new Intl.DateTimeFormat(this.i18n.locale(), {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: this.household()?.timeZone ?? 'UTC',
+    }).format(new Date(value));
+  }
   protected readonly household = computed(
     () => this.api.session()?.households.find((h) => h.id === this.api.selectedId()) ?? null,
   );

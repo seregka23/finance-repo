@@ -6,6 +6,9 @@ import { Account, AccountsService } from './accounts.service';
 import { Api } from './api';
 import { Workspace } from './workspace';
 
+beforeEach(() => localStorage.setItem('family-finance-language', 'en'));
+afterEach(() => localStorage.removeItem('family-finance-language'));
+
 const household = (id: string) => ({
   id,
   name: id,

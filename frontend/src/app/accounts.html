@@ -1,46 +1,51 @@
 <div class="pagehead">
   <div>
-    <h1 tabindex="-1">Accounts</h1>
-    <p>Balances, owners, and available funds by account.</p>
+    <h1 tabindex="-1">{{ i18n.t('Accounts') }}</h1>
+    <p>{{ i18n.t('Balances, owners, and available funds by account.') }}</p>
   </div>
 </div>
 @if (!api.selectedId()) {
   <section class="panel">
-    <h2>Create a household first</h2>
-    <p class="sub">Accounts belong to a shared household.</p>
-    <a class="btn" routerLink="/settings">Go to household settings</a>
+    <h2>{{ i18n.t('Create a household first') }}</h2>
+    <p class="sub">{{ i18n.t('Accounts belong to a shared household.') }}</p>
+    <a class="btn" routerLink="/settings">{{ i18n.t('Go to household settings') }}</a>
   </section>
 } @else {
   @if (error()) {
-    <div class="alert" role="alert">{{ error() }}</div>
+    <div class="alert" role="alert">{{ i18n.t(error()) }}</div>
   }
   @if (success()) {
-    <div class="notice" role="status">{{ success() }}</div>
+    <div class="notice" role="status">{{ i18n.t(success()) }}</div>
   }
   @if (loading()) {
-    <p role="status">Loading accounts…</p>
+    <p role="status">{{ i18n.t('Loading accounts…') }}</p>
   } @else if (loadError()) {
-    <div class="alert" role="alert">{{ loadError() }}</div>
-    <button class="btn" type="button" (click)="retry()">Try again</button>
+    <div class="alert" role="alert">{{ i18n.t(loadError()) }}</div>
+    <button class="btn" type="button" (click)="retry()">{{ i18n.t('Try again') }}</button>
   } @else {
     <div class="cols">
       <div class="stack">
         <section class="panel" aria-labelledby="accounts-heading">
-          <h2 id="accounts-heading">Household accounts</h2>
+          <h2 id="accounts-heading">{{ i18n.t('Household accounts') }}</h2>
           <p class="sub">
-            Everyone in the household can see all accounts. Ownership is for display.
+            {{
+              i18n.t('Everyone in the household can see all accounts. Ownership is for display.')
+            }}
           </p>
           <label class="filter"
-            >Status<select class="field" [value]="status()" (change)="setStatus($event)">
-              <option value="all">All accounts</option>
-              <option value="active">Active</option>
-              <option value="archived">Archived</option>
+            >{{ i18n.t('Status')
+            }}<select class="field" [value]="status()" (change)="setStatus($event)">
+              <option value="all">{{ i18n.t('All accounts') }}</option>
+              <option value="active">{{ i18n.t('Active') }}</option>
+              <option value="archived">{{ i18n.t('Archived') }}</option>
             </select></label
           >
           @if (!rows().length) {
-            <p class="empty">No accounts yet. Add your first account to get started.</p>
+            <p class="empty">
+              {{ i18n.t('No accounts yet. Add your first account to get started.') }}
+            </p>
           } @else if (!filtered().length) {
-            <p class="empty">No accounts match this status.</p>
+            <p class="empty">{{ i18n.t('No accounts match this status.') }}</p>
           }
           @for (row of filtered(); track row.id) {
             <div class="accountrow">
@@ -50,22 +55,24 @@
                   type="button"
                   [disabled]="busy()"
                   (click)="open(row)"
-                  [attr.aria-label]="'View ' + row.name"
+                  [attr.aria-label]="i18n.t('View {name}', { name: row.name })"
                 >
                   {{ row.name }}
                 </button>
-                <p>{{ row.type }} · {{ owner(row.ownerMemberId) }} · {{ row.status }}</p>
+                <p>
+                  {{ i18n.t(row.type) }} · {{ owner(row.ownerMemberId) }} · {{ i18n.t(row.status) }}
+                </p>
               </div>
               <div>
-                <p>Balance</p>
+                <p>{{ i18n.t('Balance') }}</p>
                 <strong>{{ format(row.balanceMinor, row.currency) }}</strong>
               </div>
               <div>
-                <p>Reserved</p>
+                <p>{{ i18n.t('Reserved') }}</p>
                 <strong>{{ format(row.reservedMinor, row.currency) }}</strong>
               </div>
               <div>
-                <p>Available</p>
+                <p>{{ i18n.t('Available') }}</p>
                 <strong>{{ format(row.availableMinor, row.currency) }}</strong>
               </div>
             </div>
@@ -77,12 +84,13 @@
               <div>
                 <h2 id="detail-heading">{{ row.name }}</h2>
                 <p class="sub">
-                  {{ row.type }} · {{ owner(row.ownerMemberId) }} · {{ row.designation }} ·
-                  {{ row.status }}
+                  {{ i18n.t(row.type) }} · {{ owner(row.ownerMemberId) }} ·
+                  {{ i18n.t(row.designation) }} ·
+                  {{ i18n.t(row.status) }}
                 </p>
               </div>
               <button class="btn" type="button" [disabled]="busy()" (click)="closeDetails()">
-                Close details
+                {{ i18n.t('Close details') }}
               </button>
             </div>
             <div class="actions">
@@ -92,42 +100,50 @@
                 [disabled]="busy() || historyLoading() || row.status === 'archived'"
                 (click)="beginEdit(row)"
               >
-                Edit account</button
-              ><button
+                {{ i18n.t('Edit account') }}</button><button
                 class="btn"
                 type="button"
                 [disabled]="busy() || historyLoading()"
                 (click)="toggle(row)"
               >
-                {{ row.status === 'active' ? 'Archive account' : 'Restore account' }}
+                {{
+                  row.status === 'active' ? i18n.t('Archive account') : i18n.t('Restore account')
+                }}
               </button>
             </div>
-            <p class="sub">Archiving preserves the balance and history.</p>
-            <h3>History</h3>
+            <p class="sub">{{ i18n.t('Archiving preserves the balance and history.') }}</p>
+            <h3>{{ i18n.t('History') }}</h3>
             @if (historyLoading()) {
-              <p role="status">Loading history…</p>
+              <p role="status">{{ i18n.t('Loading history…') }}</p>
             }
             @if (historyError()) {
-              <div class="alert" role="alert">{{ historyError() }}</div>
-              <button class="btn" type="button" (click)="open(row)">Retry history</button>
+              <div class="alert" role="alert">{{ i18n.t(historyError()) }}</div>
+              <button class="btn" type="button" (click)="open(row)">
+                {{ i18n.t('Retry history') }}
+              </button>
             }
             @if (!historyLoading() && !historyError() && !movements().length) {
-              <p class="sub">No movements yet.</p>
+              <p class="sub">{{ i18n.t('No movements yet.') }}</p>
             }
             @for (movement of movements(); track movement.id) {
               <div class="movement">
-                <span>{{ movement.movementDate }} · {{ movement.type.replace('_', ' ') }}</span
+                <span>{{ dateOnly(movement.movementDate) }} · {{ i18n.t(movement.type) }}</span
                 ><strong>{{ format(movement.amountMinor, movement.currency) }}</strong>
               </div>
             }
             @if (cursor() && !historyLoading()) {
-              <button class="btn" type="button" (click)="more()">Load more history</button>
+              <button class="btn" type="button" (click)="more()">
+                {{ i18n.t('Load more history') }}
+              </button>
             }
             @if (row.status === 'active') {
-              <h3>Record a balance change</h3>
+              <h3>{{ i18n.t('Record a balance change') }}</h3>
               <p class="sub">
-                Enter the change, not the resulting balance. Use + to increase or − to decrease the
-                balance.
+                {{
+                  i18n.t(
+                    'Enter the change, not the resulting balance. Use + to increase or − to decrease the balance.'
+                  )
+                }}
               </p>
               <form
                 [formGroup]="adjustment"
@@ -135,30 +151,43 @@
                 (input)="adjustmentReview.set(false)"
               >
                 <label
-                  >Signed change ({{ row.currency }})<input
+                  >{{ i18n.t('Signed change ({currency})', { currency: row.currency })
+                  }}<input
                     class="field"
                     formControlName="amount"
                     inputmode="decimal"
-                    placeholder="e.g. +10.00 or -10.00"
+                    [placeholder]="i18n.t('e.g. +10.00 or -10.00')"
                     required
                 /></label>
                 <label
-                  >Date<input class="field" type="date" formControlName="date" required
+                  >{{ i18n.t('Date')
+                  }}<input class="field" type="date" formControlName="date" required
                 /></label>
+                <p class="hint">
+                  {{ i18n.t('Use a dot as the decimal separator, for example 10.50.') }}
+                </p>
                 <button class="btn primary" type="submit" [disabled]="busy()">
                   {{
                     busy()
-                      ? 'Saving…'
+                      ? i18n.t('Saving…')
                       : adjustmentReview()
-                        ? 'Confirm balance change'
-                        : 'Review change'
+                        ? i18n.t('Confirm balance change')
+                        : i18n.t('Review change')
                   }}
                 </button>
                 @if (adjustmentReview()) {
                   <p role="status">
-                    Review: change {{ row.name }} by {{ adjustment.controls.amount.value }}
-                    {{ row.currency }} on {{ adjustment.controls.date.value }}. Confirm to record
-                    it.
+                    {{
+                      i18n.t(
+                        'Review: change {name} by {amount} {currency} on {date}. Confirm to record it.',
+                        {
+                          name: row.name,
+                          amount: adjustment.controls.amount.value,
+                          currency: row.currency,
+                          date: dateOnly(adjustment.controls.date.value),
+                        }
+                      )
+                    }}
                   </p>
                 }
               </form>
@@ -167,21 +196,32 @@
         }
       </div>
       <section class="panel" aria-labelledby="form-heading">
-        <h2 id="form-heading">{{ editing() ? 'Edit account' : 'Add an account' }}</h2>
+        <h2 id="form-heading">
+          {{ editing() ? i18n.t('Edit account') : i18n.t('Add an account') }}
+        </h2>
         <p class="sub">
-          {{ editing() ? 'Update account details.' : 'Set the opening balance as of a date.' }}
+          {{
+            editing()
+              ? i18n.t('Update account details.')
+              : i18n.t('Set the opening balance as of a date.')
+          }}
         </p>
         <form [formGroup]="form" (ngSubmit)="save()">
-          <label>Name<input class="field" formControlName="name" maxlength="100" required /></label>
           <label
-            >Type<select class="field" formControlName="type">
-              <option value="cash">Cash</option>
-              <option value="bank">Bank</option>
-              <option value="card">Card</option>
+            >{{ i18n.t('Name')
+            }}<input class="field" formControlName="name" maxlength="100" required
+          /></label>
+          <label
+            >{{ i18n.t('Type')
+            }}<select class="field" formControlName="type">
+              <option value="cash">{{ i18n.t('Cash') }}</option>
+              <option value="bank">{{ i18n.t('Bank') }}</option>
+              <option value="card">{{ i18n.t('Card') }}</option>
             </select></label
           >
           <label
-            >Currency<select class="field" formControlName="currency">
+            >{{ i18n.t('Currency')
+            }}<select class="field" formControlName="currency">
               <option>RSD</option>
               <option>EUR</option>
               <option>RUB</option>
@@ -189,53 +229,68 @@
             </select></label
           >
           @if (editing() && selected()?.currencyLocked) {
-            <p class="sub">Currency cannot change after the first transaction.</p>
+            <p class="sub">{{ i18n.t('Currency cannot change after the first transaction.') }}</p>
           }
           @if (editing() && !selected()?.currencyLocked) {
             <p class="sub">
-              Changing currency keeps the same amounts. Use this only to correct the account's
-              currency.
+              {{
+                i18n.t(
+                  "Changing currency keeps the same amounts. Use this only to correct the account's currency."
+                )
+              }}
             </p>
           }
           <label
-            >Owner<select class="field" formControlName="ownerMemberId">
-              <option value="">Household</option>
+            >{{ i18n.t('Owner')
+            }}<select class="field" formControlName="ownerMemberId">
+              <option value="">{{ i18n.t('Household') }}</option>
               @if (editing() && inactiveOwner(selected()?.ownerMemberId ?? null)) {
                 <option [value]="selected()!.ownerMemberId" disabled>
-                  {{ owner(selected()!.ownerMemberId) }} (inactive)
+                  {{ owner(selected()!.ownerMemberId) }} ({{ i18n.t('inactive') }})
                 </option>
               }
               @for (member of members(); track member.id) {
                 @if (member.status === 'active') {
-                  <option [value]="member.id">{{ member.email || 'Household member' }}</option>
+                  <option [value]="member.id">
+                    {{ member.email || i18n.t('Household member') }}
+                  </option>
                 }
               }
             </select></label
           >
           <label
-            >Designation<select class="field" formControlName="designation">
-              <option value="personal">Personal</option>
-              <option value="business">Business</option>
+            >{{ i18n.t('Designation')
+            }}<select class="field" formControlName="designation">
+              <option value="personal">{{ i18n.t('Personal') }}</option>
+              <option value="business">{{ i18n.t('Business') }}</option>
             </select></label
           >
           @if (!editing()) {
             <label
-              >Opening balance<input
-                class="field"
-                formControlName="opening"
-                inputmode="decimal"
-                required /></label
-            ><label
-              >As of date<input class="field" type="date" formControlName="date" required
+              >{{ i18n.t('Opening balance')
+              }}<input class="field" formControlName="opening" inputmode="decimal" required
+            /></label>
+            <p class="hint">
+              {{ i18n.t('Use a dot as the decimal separator, for example 10.50.') }}
+            </p>
+            <label
+              >{{ i18n.t('As of date')
+              }}<input class="field" type="date" formControlName="date" required
             /></label>
           }
           <div class="actions">
             <button class="btn primary" type="submit" [disabled]="busy()">
-              {{ busy() ? 'Saving…' : editing() ? 'Save changes' : 'Create account' }}
+              {{
+                busy()
+                  ? i18n.t('Saving…')
+                  : editing()
+                    ? i18n.t('Save changes')
+                    : i18n.t('Create financial account')
+              }}
             </button>
             @if (editing()) {
               <button class="btn" type="button" [disabled]="busy()" (click)="resetForm()">
-                Cancel edit
+                {{ i18n.t('Cancel edit') }}
               </button>
             }
           </div>

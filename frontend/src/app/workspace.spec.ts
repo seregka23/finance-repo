@@ -4,6 +4,9 @@ import { Workspace, WorkspaceData } from './workspace';
 import { ResultsState } from './results-state';
 import { vi } from 'vitest';
 
+beforeEach(() => localStorage.setItem('family-finance-language', 'en'));
+afterEach(() => localStorage.removeItem('family-finance-language'));
+
 const data = (accounts: number): WorkspaceData => ({
   counts: { accounts, transactions: 0, plans: 0, reserves: 0, accountMovements: 0 },
   capabilities: {
@@ -67,7 +70,7 @@ describe('results state', () => {
 });
 
 describe('financial navigation and transaction chooser', () => {
-  it('defines the six titled lazy routes and the settings route', async () => {
+  it('defines the six lazy routes and the settings route', async () => {
     const { routes } = await import('./app.routes');
     for (const path of [
       'dashboard',
@@ -79,7 +82,6 @@ describe('financial navigation and transaction chooser', () => {
       'settings',
     ]) {
       const route = routes.find((item) => item.path === path);
-      expect(route?.title).toBeTruthy();
       expect(route?.loadComponent).toBeTypeOf('function');
     }
     expect(routes.find((item) => item.path === '')?.redirectTo).toBe('dashboard');

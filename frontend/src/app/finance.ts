@@ -1,3 +1,5 @@
+import { formatMinor } from './accounts.service';
+import { Localization } from './localization';
 import {
   Component,
   computed,
@@ -14,7 +16,11 @@ import { ResultsState } from './results-state';
 
 @Component({ imports: [RouterLink, ResultsState], templateUrl: './finance.html' })
 export class Finance implements OnDestroy {
+  protected readonly i18n = inject(Localization);
   protected readonly api = inject(Api);
+  protected zero(currency: string): string {
+    return formatMinor('0', currency, this.i18n.locale());
+  }
   protected readonly workspace = inject(Workspace);
   private readonly route = inject(ActivatedRoute);
   protected readonly page = this.route.snapshot.data['page'] as string;
@@ -22,7 +28,7 @@ export class Finance implements OnDestroy {
     () => this.api.session()?.households.find((h) => h.id === this.api.selectedId()) ?? null,
   );
   protected readonly month = computed(() =>
-    new Intl.DateTimeFormat(undefined, {
+    new Intl.DateTimeFormat(this.i18n.locale(), {
       month: 'long',
       year: 'numeric',
       timeZone: this.household()?.timeZone ?? 'UTC',

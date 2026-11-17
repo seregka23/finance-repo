@@ -1,3 +1,4 @@
+import { Localization } from './localization';
 import {
   Component,
   computed,
@@ -20,6 +21,7 @@ import { ResultsState } from './results-state';
   styleUrl: './categories.css',
 })
 export class Categories {
+  protected readonly i18n = inject(Localization);
   protected readonly api = inject(Api);
   private readonly service = inject(CategoriesService);
   private readonly editInput = viewChild<ElementRef<HTMLInputElement>>('editInput');
