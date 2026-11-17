@@ -2,23 +2,24 @@ import { FinanceError } from './money.js';
 function invalid(message: string): never {
   throw new FinanceError('INVALID_DATE', message);
 }
+const DAYS_BY_MONTH: Readonly<Record<number, number>> = {
+  1: 31,
+  2: 28,
+  3: 31,
+  4: 30,
+  5: 31,
+  6: 30,
+  7: 31,
+  8: 31,
+  9: 30,
+  10: 31,
+  11: 30,
+  12: 31,
+};
 function daysInMonth(year: number, month: number): number {
-  return (
-    [
-      31,
-      year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28,
-      31,
-      30,
-      31,
-      30,
-      31,
-      31,
-      30,
-      31,
-      30,
-      31,
-    ][month - 1] ?? 0
-  );
+  if (month === 2 && year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0))
+    return 29;
+  return DAYS_BY_MONTH[month] ?? 0;
 }
 export function validateDate(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
