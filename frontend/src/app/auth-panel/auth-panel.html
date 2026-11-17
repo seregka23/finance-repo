@@ -1,0 +1,34 @@
+          <section class="welcome panel">
+            <h1>Family Finance</h1>
+            <p>A shared place for your household finances.</p>
+            @if (invite()) {
+              <p class="notice">
+                You have an invitation. Sign in with the invited email address to review it.
+              </p>
+            }
+            @if (!authMode()) {
+              <div class="actions auth-choices">
+                <button type="button" class="btn primary" (click)="chooseAuth('login')">Sign in</button>
+                <button type="button" class="btn" (click)="chooseAuth('register')">Create account</button>
+              </div>
+            } @else {
+              <h2>{{ authMode() === 'login' ? 'Sign in' : 'Create account' }}</h2>
+              <form (submit)="authenticate($event)">
+                <label for="auth-email">Email address
+                  <input class="field" id="auth-email" name="email" type="email" autocomplete="email" required maxlength="254" />
+                </label>
+                <label for="auth-password">Password
+                  <input class="field" id="auth-password" name="password" type="password" [attr.autocomplete]="authMode() === 'login' ? 'current-password' : 'new-password'" [attr.aria-describedby]="authMode() === 'register' ? 'auth-password-hint' : null" [attr.minlength]="authMode() === 'register' ? 12 : null" maxlength="128" required />
+                </label>
+                @if (authMode() === 'register') { <span class="hint" id="auth-password-hint">Use 12 to 128 characters.</span> }
+                @if (authMode() === 'register') {
+                  <label for="auth-confirmation">Confirm password
+                    <input class="field" id="auth-confirmation" name="confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="128" required />
+                  </label>
+                }
+                @if (authError()) { <div class="alert" role="alert">{{ authError() }}</div> }
+                <button class="btn primary" type="submit" [disabled]="authPending()">{{ authPending() ? (authMode() === 'login' ? 'Signing in…' : 'Creating account…') : (authMode() === 'login' ? 'Sign in' : 'Create account') }}</button>
+              </form>
+              <button type="button" class="textbtn auth-switch" [disabled]="authPending()" (click)="chooseAuth(authMode() === 'login' ? 'register' : 'login')">{{ authMode() === 'login' ? 'Need an account? Create account' : 'Already have an account? Sign in' }}</button>
+            }
+          </section>
