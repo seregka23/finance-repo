@@ -1,4 +1,4 @@
-import { Localization } from './localization';
+import { Localization } from '../../core/i18n/localization';
 import { Component, inject, input, output } from '@angular/core';
 
 @Component({

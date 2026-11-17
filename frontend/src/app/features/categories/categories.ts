@@ -1,4 +1,4 @@
-import { Localization } from './localization';
+import { Localization } from '../../core/i18n/localization';
 import {
   Component,
   computed,
@@ -11,9 +11,9 @@ import {
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { Api } from './api';
+import { Api } from '../../core/api';
 import { CategoriesService, Category, CategoryStatus, CategoryType } from './categories.service';
-import { ResultsState } from './results-state';
+import { ResultsState } from '../../shared/ui/results-state';
 
 @Component({
   imports: [ReactiveFormsModule, RouterLink, ResultsState],

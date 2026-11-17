@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decimalToMinor, formatMinor } from './accounts.service';
+import { decimalToMinor, formatMinor } from './formatters';
 
 describe('account money conversion', () => {
   it('converts decimal input exactly, including large amounts and signed changes', () => {

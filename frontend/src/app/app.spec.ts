@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 import { App } from './app';
-import { Api, ApiError } from './api';
+import { Api, ApiError } from './core/api';
 
 beforeEach(() => localStorage.setItem('family-finance-language', 'en'));
 afterEach(() => localStorage.removeItem('family-finance-language'));
@@ -131,7 +131,7 @@ describe('household session', () => {
 describe('invitation form', () => {
   afterEach(() => vi.restoreAllMocks());
   it('submits the owner invitation through Angular without navigating away', async () => {
-    const { Settings } = await import('./settings');
+    const { Settings } = await import('./features/settings/settings');
     TestBed.configureTestingModule({ providers: [provideRouter([])] });
     const household = {
       id: 'household',

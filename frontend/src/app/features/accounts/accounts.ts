@@ -1,19 +1,17 @@
-import { Localization } from './localization';
+import { createAccountForm, createAdjustmentForm } from './account-forms';
+import { Localization } from '../../core/i18n/localization';
 import { Component, computed, effect, inject, signal } from '@angular/core';
-import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { Api, Members } from './api';
+import { Api, Members } from '../../core/api';
+import { AccountsService } from './accounts.service';
+import type { Account, AccountInput, Movement } from './account.model';
 import {
-  Account,
-  AccountInput,
-  AccountsService,
-  Currency,
   decimalToMinor,
   formatMinor,
   formatCalendarDate,
-  Movement,
-} from './accounts.service';
-import { Workspace } from './workspace';
+} from '../../shared/formatters/formatters';
+import { Workspace } from '../../core/workspace';
 
 @Component({
   imports: [ReactiveFormsModule, RouterLink],
@@ -48,22 +46,8 @@ export class Accounts {
   protected dateOnly(value: string): string {
     return formatCalendarDate(value, this.i18n.locale());
   }
-  protected readonly form = new FormGroup({
-    name: new FormControl('', {
-      nonNullable: true,
-      validators: [Validators.required, Validators.maxLength(100)],
-    }),
-    type: new FormControl<AccountInput['type']>('cash', { nonNullable: true }),
-    currency: new FormControl<Currency>('RSD', { nonNullable: true }),
-    ownerMemberId: new FormControl('', { nonNullable: true }),
-    designation: new FormControl<AccountInput['designation']>('personal', { nonNullable: true }),
-    opening: new FormControl('0', { nonNullable: true }),
-    date: new FormControl(this.today(), { nonNullable: true }),
-  });
-  protected readonly adjustment = new FormGroup({
-    amount: new FormControl('', { nonNullable: true }),
-    date: new FormControl(this.today(), { nonNullable: true }),
-  });
+  protected readonly form = createAccountForm(this.today());
+  protected readonly adjustment = createAdjustmentForm(this.today());
   private today(): string {
     const h = this.api.session()?.households.find((h) => h.id === this.api.selectedId());
     const parts = new Intl.DateTimeFormat('en-CA', {

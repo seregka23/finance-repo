@@ -1,9 +1,9 @@
-import { Localization } from './localization';
+import { Localization } from './core/i18n/localization';
 import { Component, effect, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Api, ApiError, AuthConfig } from './api';
-import { AuthPanel } from './auth-panel/auth-panel';
+import { Api, ApiError, AuthConfig } from './core/api';
+import { AuthPanel } from './features/auth/auth-panel/auth-panel';
 @Component({
   selector: 'app-root',
   imports: [RouterOutlet, RouterLink, RouterLinkActive, AuthPanel],

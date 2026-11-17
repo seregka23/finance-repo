@@ -1,8 +1,8 @@
-import { Localization } from './localization';
+import { Localization } from '../../core/i18n/localization';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Api, Household, Members } from './api';
+import { Api, Household, Members } from '../../core/api';
 @Component({ imports: [ReactiveFormsModule, RouterLink], templateUrl: './settings.html' })
 export class Settings {
   protected readonly i18n = inject(Localization);

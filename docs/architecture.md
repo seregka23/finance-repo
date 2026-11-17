@@ -36,11 +36,11 @@ compound writes to use the D1 binding's batch API.
 
 | File | Responsibility |
 | --- | --- |
-| `frontend/src/app/api.ts` | Stable public `Api` facade and compatibility type/error exports. |
-| `frontend/src/app/api-transport.ts` | Same-origin HTTP requests, JSON/error decoding and 204 handling. |
-| `frontend/src/app/api-types.ts` | Session, household, member and auth configuration contracts. |
-| `frontend/src/app/session-state.ts` | Shared session/household signals, refresh and access-loss recovery. |
-| `frontend/src/app/auth-panel/` | Sign-in/registration choice, form state, validation, submission and focus. |
+| `frontend/src/app/core/api.ts` | Public `Api` facade and type/error exports. |
+| `frontend/src/app/core/api-transport.ts` | Same-origin HTTP requests, JSON/error decoding and 204 handling. |
+| `frontend/src/app/core/api-types.ts` | Session, household, member and auth configuration contracts. |
+| `frontend/src/app/core/session-state.ts` | Shared session/household signals, refresh and access-loss recovery. |
+| `frontend/src/app/features/auth/auth-panel/` | Sign-in/registration choice, form state, validation, submission and focus. |
 | `frontend/src/app/app.ts` | Shell, navigation, initial loading, logout and invitation handling. |
 
 Api and AuthPanel share the same injected state through the facade. SessionState
@@ -52,6 +52,9 @@ The refactor retains native fetch/cookie handling and existing form semantics.
 A transport migration or form redesign is a separate change. AuthPanel preserves
 the original labels, IDs, validation, focus behavior and global stylesheet
 classes; it receives the pending invitation as a signal input.
+
+See [frontend architecture](frontend-architecture.md) for the full current
+feature layout, translation catalogs and shared formatting helpers.
 
 ## Verification
 

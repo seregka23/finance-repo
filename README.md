@@ -3,7 +3,8 @@
 Angular and NestJS deployed together as one Cloudflare Worker named `finance-repo`.
 
 See [application code boundaries](docs/architecture.md) for the backend feature
-structure and frontend transport, session and authentication components.
+structure and [frontend architecture](docs/frontend-architecture.md) for the
+Angular core, feature and shared boundaries.
 Run the deployment commands from the repository root.
 
 ## Design reference

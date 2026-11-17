@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Api } from './api';
 import { Workspace, WorkspaceData } from './workspace';
-import { ResultsState } from './results-state';
+import { ResultsState } from '../shared/ui/results-state';
 import { vi } from 'vitest';
 
 beforeEach(() => localStorage.setItem('family-finance-language', 'en'));
@@ -71,7 +71,7 @@ describe('results state', () => {
 
 describe('financial navigation and transaction chooser', () => {
   it('defines the six lazy routes and the settings route', async () => {
-    const { routes } = await import('./app.routes');
+    const { routes } = await import('../app.routes');
     for (const path of [
       'dashboard',
       'accounts',
@@ -87,7 +87,7 @@ describe('financial navigation and transaction chooser', () => {
     expect(routes.find((item) => item.path === '')?.redirectTo).toBe('dashboard');
   });
   it('opens the chooser once and restores focus after close', async () => {
-    const { Finance } = await import('./finance');
+    const { Finance } = await import('../features/finance/finance');
     const { ActivatedRoute, provideRouter } = await import('@angular/router');
     TestBed.configureTestingModule({
       providers: [

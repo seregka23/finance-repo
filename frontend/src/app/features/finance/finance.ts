@@ -1,5 +1,5 @@
-import { formatMinor } from './accounts.service';
-import { Localization } from './localization';
+import { formatMinor } from '../../shared/formatters/formatters';
+import { Localization } from '../../core/i18n/localization';
 import {
   Component,
   computed,
@@ -10,9 +10,9 @@ import {
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Api } from './api';
-import { Workspace } from './workspace';
-import { ResultsState } from './results-state';
+import { Api } from '../../core/api';
+import { Workspace } from '../../core/workspace';
+import { ResultsState } from '../../shared/ui/results-state';
 
 @Component({ imports: [RouterLink, ResultsState], templateUrl: './finance.html' })
 export class Finance implements OnDestroy {

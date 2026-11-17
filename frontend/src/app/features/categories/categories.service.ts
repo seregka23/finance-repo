@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Api } from './api';
+import { Api } from '../../core/api';
 
 export type CategoryType = 'expense' | 'income';
 export type CategoryStatus = 'active' | 'archived';

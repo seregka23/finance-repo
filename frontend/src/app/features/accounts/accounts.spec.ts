@@ -2,9 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 import { Accounts } from './accounts';
-import { Account, AccountsService } from './accounts.service';
-import { Api } from './api';
-import { Workspace } from './workspace';
+import { AccountsService } from './accounts.service';
+import type { Account } from './account.model';
+import { Api } from '../../core/api';
+import { Workspace } from '../../core/workspace';
 
 beforeEach(() => localStorage.setItem('family-finance-language', 'en'));
 afterEach(() => localStorage.removeItem('family-finance-language'));

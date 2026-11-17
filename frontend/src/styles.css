@@ -601,7 +601,7 @@ dialog::backdrop {
   }
   .global-household .field {
     min-width: 0;
-    width: 100%;
+    width: 0;
     flex: 1;
   }
   .profile-menu {
@@ -666,5 +666,8 @@ dialog::backdrop {
     height: auto;
     min-height: 64px;
     padding-block: 0.5rem;
+  }
+  .global-household {
+    flex-basis: 100%;
   }
 }
