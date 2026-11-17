@@ -26,7 +26,7 @@ describe('workspace summary', () => {
     await expect(service.get(identity, 'household-1')).resolves.toEqual({
       counts,
       capabilities: {
-        accounts: false,
+        accounts: true,
         transactions: false,
         imports: false,
         budgets: false,

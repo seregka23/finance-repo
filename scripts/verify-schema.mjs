@@ -377,6 +377,7 @@ async function verify() {
           "0004_category_eligibility.sql",
           "0005_native_auth.sql",
           "0006_atomic_posting.sql",
+          "0007_accounts.sql",
         ],
       );
       assert.deepEqual(
