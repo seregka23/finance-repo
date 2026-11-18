@@ -12,13 +12,24 @@ export class ApiError extends Error {
 
 @Service()
 export class ApiTransport {
-  async request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+  async request<T>(
+    path: string,
+    method = 'GET',
+    body?: unknown,
+    headers: Record<string, string> = {},
+  ): Promise<T> {
     const response = await fetch('/api/v1' + path, {
       method,
       credentials: 'same-origin',
-      ...(body === undefined
-        ? {}
-        : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+      ...(body !== undefined || Object.keys(headers).length
+        ? {
+            headers: {
+              ...headers,
+              ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+            },
+          }
+        : {}),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!response.ok) {
       const data: { error?: { code?: string; message?: string } } = await response

@@ -56,7 +56,7 @@ export class WorkspaceService {
       counts: result.results[0] as WorkspaceCounts,
       capabilities: {
         accounts: true,
-        transactions: false,
+        transactions: true,
         imports: false,
         budgets: false,
         reserves: false,

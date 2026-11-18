@@ -599,7 +599,7 @@ async function verify() {
       assert.deepEqual(summary.counts, empty);
       assert.deepEqual(summary.capabilities, {
         accounts: true,
-        transactions: false,
+        transactions: true,
         imports: false,
         budgets: false,
         reserves: false,
