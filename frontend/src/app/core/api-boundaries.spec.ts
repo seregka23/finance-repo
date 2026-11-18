@@ -17,6 +17,22 @@ describe('API boundaries', () => {
     });
   });
 
+  it('preserves idempotency headers with JSON and same-origin credentials', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
+    await TestBed.inject(Api).request(
+      '/transactions',
+      'POST',
+      { amountMinor: '123' },
+      { 'Idempotency-Key': 'attempt-1' },
+    );
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/transactions', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Idempotency-Key': 'attempt-1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountMinor: '123' }),
+    });
+  });
+
   it('refreshes the household list after access is lost', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(

@@ -11,9 +11,10 @@ import type {
   AnyTransactionRecord,
   RefundInput,
   RefundRecord,
+  TransactionListOptions,
 } from './contracts.js';
 import { PrismaService } from '../database/prisma.service.js';
-import type { Prisma } from '../generated/prisma/client.js';
+import { Prisma } from '../generated/prisma/client.js';
 import type { Currency } from '../finance/money.js';
 import { TransferWrite } from './transfer-write.js';
 import { RefundWrite } from './refund-write.js';
@@ -696,10 +697,7 @@ export class PostingRepository {
   async list(
     identity: Identity,
     householdId: string,
-    options: {
-      limit: number;
-      cursor: { transactionDate: string; id: string } | null;
-    },
+    options: TransactionListOptions,
   ): Promise<{
     transactions: AnyTransactionRecord[];
     nextCursor: string | null;
@@ -718,22 +716,115 @@ export class PostingRepository {
       if (!access)
         throw apiError(404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
       const c = options.cursor;
-      const rows = await this.prisma.transaction.findMany({
-        where: {
-          ...this.scope(identity, householdId),
-          ...(c
-            ? {
-                OR: [
-                  { transactionDate: { lt: c.transactionDate } },
-                  { transactionDate: c.transactionDate, id: { lt: c.id } },
-                ],
-              }
-            : {}),
-        },
-        include: includes,
-        orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
-        take: options.limit + 1,
-      });
+      const account: Prisma.AccountWhereInput = {
+        ...(options.accountId ? { id: options.accountId } : {}),
+        ...(options.ownerMemberId
+          ? {
+              ownerMemberId:
+                options.ownerMemberId === 'household'
+                  ? null
+                  : options.ownerMemberId,
+            }
+          : {}),
+        ...(options.currency ? { currency: options.currency } : {}),
+      };
+      const accountFilter =
+        options.accountId || options.ownerMemberId || options.currency;
+      const conditions: Prisma.TransactionWhereInput[] = [
+        this.scope(identity, householdId),
+      ];
+      if (c)
+        conditions.push({
+          OR: [
+            { transactionDate: { lt: c.transactionDate } },
+            { transactionDate: c.transactionDate, id: { lt: c.id } },
+          ],
+        });
+      if (options.dateFrom || options.dateTo)
+        conditions.push({
+          transactionDate: {
+            ...(options.dateFrom ? { gte: options.dateFrom } : {}),
+            ...(options.dateTo ? { lte: options.dateTo } : {}),
+          },
+        });
+      if (options.type) conditions.push({ type: options.type });
+      if (options.status) conditions.push({ status: options.status });
+      if (options.categoryId)
+        conditions.push({ categoryId: options.categoryId });
+      if (accountFilter)
+        conditions.push({
+          OR: [
+            { postingDetails: { account } },
+            { transferDetails: { fromAccount: account } },
+            { transferDetails: { toAccount: account } },
+          ],
+        });
+      // Prisma's SQLite contains maps to LIKE without a literal escape. Use a
+      // parameterized, bounded ID query for literal substring search, then
+      // hydrate through the normal ORM path. All filters precede pagination.
+      const readPage = (where: Prisma.TransactionWhereInput) =>
+        this.prisma.transaction.findMany({
+          where,
+          include: includes,
+          orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
+          take: options.limit + 1,
+        });
+      let rows: ReadRow[];
+      if (options.search) {
+        const parts: Prisma.Sql[] = [
+          Prisma.sql`t.household_id = ${householdId}`,
+          Prisma.sql`EXISTS (SELECT 1 FROM households h JOIN household_members m ON m.household_id=h.id WHERE h.id=t.household_id AND h.status='active' AND m.identity_subject=${identity.subject} AND m.status='active')`,
+          Prisma.sql`(instr(lower(t.merchant), lower(${options.search})) > 0 OR instr(lower(t.note), lower(${options.search})) > 0)`,
+        ];
+        if (c)
+          parts.push(
+            Prisma.sql`(t.transaction_date < ${c.transactionDate} OR (t.transaction_date = ${c.transactionDate} AND t.id < ${c.id}))`,
+          );
+        if (options.dateFrom)
+          parts.push(Prisma.sql`t.transaction_date >= ${options.dateFrom}`);
+        if (options.dateTo)
+          parts.push(Prisma.sql`t.transaction_date <= ${options.dateTo}`);
+        if (options.type) parts.push(Prisma.sql`t.type = ${options.type}`);
+        if (options.status)
+          parts.push(Prisma.sql`t.status = ${options.status}`);
+        if (options.categoryId)
+          parts.push(Prisma.sql`t.category_id = ${options.categoryId}`);
+        if (accountFilter) {
+          const accountParts: Prisma.Sql[] = [];
+          if (options.accountId)
+            accountParts.push(Prisma.sql`a.id = ${options.accountId}`);
+          if (options.ownerMemberId === 'household')
+            accountParts.push(Prisma.sql`a.owner_member_id IS NULL`);
+          else if (options.ownerMemberId)
+            accountParts.push(
+              Prisma.sql`a.owner_member_id = ${options.ownerMemberId}`,
+            );
+          if (options.currency)
+            accountParts.push(Prisma.sql`a.currency = ${options.currency}`);
+          parts.push(
+            Prisma.sql`EXISTS (SELECT 1 FROM accounts a WHERE a.household_id=t.household_id AND ${Prisma.join(accountParts, ' AND ')} AND (EXISTS (SELECT 1 FROM posting_details p WHERE p.household_id=t.household_id AND p.transaction_id=t.id AND p.account_id=a.id) OR EXISTS (SELECT 1 FROM transfer_details d WHERE d.household_id=t.household_id AND d.transaction_id=t.id AND (d.from_account_id=a.id OR d.to_account_id=a.id))))`,
+          );
+        }
+        const ids = await this.prisma.$queryRaw<{ id: string }[]>(
+          Prisma.sql`SELECT t.id FROM transactions t WHERE ${Prisma.join(parts, ' AND ')} ORDER BY t.transaction_date DESC, t.id DESC LIMIT ${options.limit + 1}`,
+        );
+        const hydrated = new Map<string, ReadRow>();
+        // Leave room for scope/filter bindings and compound relation keys in D1.
+        for (let offset = 0; offset < ids.length; offset += 32) {
+          const batch = ids.slice(offset, offset + 32).map((row) => row.id);
+          for (const row of await readPage({
+            AND: [...conditions, { id: { in: batch } }],
+          })) {
+            hydrated.set(row.id, row);
+          }
+        }
+        rows = ids.flatMap(({ id }) => {
+          const row = hydrated.get(id);
+          return row ? [row] : [];
+        });
+      } else {
+        rows = await readPage({ AND: conditions });
+      }
       const transactions = rows.slice(0, options.limit).map(mapRow),
         last = transactions.at(-1);
       const nextCursor =

@@ -209,7 +209,7 @@
       <button class="btn" type="button" (click)="close()">{{ i18n.t('Close') }}</button>
     </div>
     <p class="sub">
-      {{ i18n.t('Choose how to add a transaction. These options are coming soon.') }}
+      {{ i18n.t('Choose how to add a transaction.') }}
     </p>
     @if (workspace.data()?.counts?.accounts === 0) {
       <p class="notice">
@@ -218,15 +218,19 @@
       </p>
     }
     <div class="chooser">
-      <button class="btn" disabled>{{ i18n.t('Enter manually') }}</button><button
-        class="btn"
-        disabled
-      >
+      @if (workspace.data()?.counts?.accounts) {
+        <a class="btn" routerLink="/transactions" [queryParams]="{ create: 1 }" (click)="close()">{{
+          i18n.t('Enter manually')
+        }}</a>
+      } @else {
+        <button class="btn" disabled>{{ i18n.t('Enter manually') }}</button>
+      }
+      <button class="btn" disabled>
         {{ i18n.t('Paste SMS') }}</button
       ><button class="btn" disabled>{{ i18n.t('Upload image') }}</button>
     </div>
     <p class="hint">
-      {{ i18n.t('Transaction entry and imports will be available in a future update.') }}
+      {{ i18n.t('SMS and image imports are coming soon.') }}
     </p>
   </div>
 </dialog>

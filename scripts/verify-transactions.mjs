@@ -769,6 +769,69 @@ async function verify() {
     },
   );
   await check(
+    "filtered pagination, literal search and validation",
+    async () => {
+      const a = await post(
+        input(primary, "11", {
+          transactionDate: "2026-10-05",
+          merchant: "Market 100%_Sale",
+        }),
+      );
+      const b = await post(
+        input(primary, "12", {
+          transactionDate: "2026-10-05",
+          note: "MARKET 100%_sale",
+        }),
+      );
+      await post(
+        input(primary, "13", {
+          transactionDate: "2026-10-05",
+          merchant: "Market 100xxSale",
+        }),
+      );
+      const params = new URLSearchParams({
+        search: "100%_",
+        dateFrom: "2026-10-05",
+        dateTo: "2026-10-05",
+        type: "expense",
+        status: "posted",
+        categoryId: expense.id,
+        accountId: primary,
+        ownerMemberId: "household",
+        currency: "RSD",
+        limit: "1",
+      });
+      const first = await api(path + "?" + params, owner);
+      assert.equal(first.transactions.length, 1);
+      assert(first.nextCursor);
+      params.set("cursor", first.nextCursor);
+      const second = await api(path + "?" + params, owner);
+      assert.deepEqual(
+        new Set([first.transactions[0].id, second.transactions[0].id]),
+        new Set([a.id, b.id]),
+      );
+      assert.equal(second.nextCursor, null);
+      for (const q of [
+        "search=",
+        "search=a&search=b",
+        "dateFrom=2026-02-29",
+        "dateFrom=2026-10-06&dateTo=2026-10-05",
+        "type=unknown",
+        "status=unknown",
+        "currency=XYZ",
+        "unknown=x",
+        "accountId=",
+      ])
+        await api(path + "?" + q, owner, { status: 400 });
+      await api(path + "?search=Market", stranger, { status: 404 });
+      const otherPage = await api(
+        `/api/v1/households/${other.id}/transactions?search=Market`,
+        stranger,
+      );
+      assert.deepEqual(otherPage.transactions, []);
+    },
+  );
+  await check(
     "cursor reads are scoped, bounded and stable with no duplicated transactions",
     async () => {
       const seen = new Set();
@@ -803,6 +866,111 @@ async function verify() {
         `/api/v1/households/${other.id}/transactions/${original.id}`,
         stranger,
         { status: 404 },
+      );
+    },
+  );
+  await check(
+    "transfer account, owner and currency filters share a leg",
+    async () => {
+      const memberId = (
+        await query(
+          `SELECT id FROM household_members WHERE household_id=${quote(householdId)} AND identity_subject=(SELECT 'user:' || id FROM auth_users WHERE email='owner@example.invalid')`,
+        )
+      )[0].id;
+      const destination = await account("filter-eur", "100000", "EUR");
+      await query(
+        `UPDATE accounts SET owner_member_id=${quote(memberId)} WHERE id=${quote(destination)}`,
+      );
+      const transfer = await post({
+        type: "transfer",
+        transactionDate: "2026-09-01",
+        fromAccountId: primary,
+        toAccountId: destination,
+        debitAmountMinor: "100",
+        creditAmountMinor: "1",
+        debitCurrency: "RSD",
+        creditCurrency: "EUR",
+        merchant: "Transfer filter",
+        fee: {
+          amountMinor: "1",
+          categoryId: expense.id,
+          exchangeRate: null,
+          exchangeRateSource: null,
+        },
+      });
+      const list = async (query) =>
+        (await api(path + "?" + new URLSearchParams(query), owner))
+          .transactions;
+      for (const search of [undefined, "Transfer filter"]) {
+        const common = { type: "transfer", ...(search ? { search } : {}) };
+        assert(
+          (
+            await list({
+              ...common,
+              accountId: destination,
+              ownerMemberId: memberId,
+              currency: "EUR",
+            })
+          ).some((t) => t.id === transfer.id),
+        );
+        assert(
+          !(
+            await list({
+              ...common,
+              accountId: primary,
+              ownerMemberId: memberId,
+              currency: "EUR",
+            })
+          ).some((t) => t.id === transfer.id),
+        );
+        assert(
+          !(
+            await list({
+              ...common,
+              accountId: destination,
+              ownerMemberId: "household",
+              currency: "EUR",
+            })
+          ).some((t) => t.id === transfer.id),
+        );
+      }
+      assert(
+        (
+          await list({
+            type: "fee",
+            accountId: primary,
+            categoryId: expense.id,
+          })
+        ).some((t) => t.id === transfer.fee.id),
+      );
+    },
+  );
+  await check(
+    "literal search supports the full 100-row page size",
+    async () => {
+      const expected = [];
+      for (let index = 0; index < 101; index += 1) {
+        const row = await post(
+          input(primary, "1", { merchant: "Max page %_" }),
+        );
+        expected.push(row.id);
+      }
+      const params = new URLSearchParams({
+        search: "Max page %_",
+        limit: "100",
+        type: "expense",
+        accountId: primary,
+        currency: "RSD",
+      });
+      const first = await api(path + "?" + params, owner);
+      assert.equal(first.transactions.length, 100);
+      assert(first.nextCursor);
+      params.set("cursor", first.nextCursor);
+      const last = await api(path + "?" + params, owner);
+      assert.equal(last.nextCursor, null);
+      assert.deepEqual(
+        [...first.transactions, ...last.transactions].map((row) => row.id),
+        expected.sort().reverse(),
       );
     },
   );

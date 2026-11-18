@@ -13,8 +13,13 @@ export class Api {
   readonly session = this.state.session;
   readonly selectedId = this.state.selectedId;
 
-  request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
-    return this.transport.request<T>(path, method, body);
+  request<T>(
+    path: string,
+    method = 'GET',
+    body?: unknown,
+    headers?: Record<string, string>,
+  ): Promise<T> {
+    return this.transport.request<T>(path, method, body, headers);
   }
   refreshSession(preferred?: string): Promise<void> {
     return this.state.refreshSession(preferred);

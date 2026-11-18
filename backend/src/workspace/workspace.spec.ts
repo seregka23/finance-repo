@@ -27,7 +27,7 @@ describe('workspace summary', () => {
       counts,
       capabilities: {
         accounts: true,
-        transactions: false,
+        transactions: true,
         imports: false,
         budgets: false,
         reserves: false,

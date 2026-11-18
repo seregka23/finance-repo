@@ -59,6 +59,9 @@ model Account {
   status String @default("active")
   createdAt String @map("created_at")
   updatedAt String @map("updated_at")
+  postings PostingDetails[]
+  outgoingTransfers TransferDetails[] @relation("TransferFrom")
+  incomingTransfers TransferDetails[] @relation("TransferTo")
   @@unique([householdId, id, currency])
   @@unique([householdId, id])
   @@map("accounts")
@@ -300,6 +303,7 @@ model PostingDetails {
   exchangeRate String? @map("exchange_rate")
   exchangeRateSource String? @map("exchange_rate_source")
   transaction Transaction @relation(fields: [householdId, transactionId], references: [householdId, id], onDelete: Restrict)
+  account Account @relation(fields: [householdId, accountId], references: [householdId, id], onDelete: Restrict)
   @@unique([householdId, transactionId])
   @@map("posting_details")
 }
@@ -316,6 +320,8 @@ model TransferDetails {
   feeTransactionId String? @map("fee_transaction_id")
   transaction Transaction @relation(fields: [householdId, transactionId], references: [householdId, id], onDelete: Restrict)
   feeTransaction Transaction? @relation("TransferFee", fields: [householdId, feeTransactionId], references: [householdId, id], onDelete: Restrict)
+  fromAccount Account @relation("TransferFrom", fields: [householdId, fromAccountId], references: [householdId, id], onDelete: Restrict)
+  toAccount Account @relation("TransferTo", fields: [householdId, toAccountId], references: [householdId, id], onDelete: Restrict)
   @@unique([householdId, transactionId])
   @@unique([householdId, feeTransactionId])
   @@map("transfer_details")

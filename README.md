@@ -186,10 +186,10 @@ Reserves → Reports. Household settings remain under Profile. A person without
 a household is directed to the working creation form.
 
 These pages distinguish loading, errors and real empty household data using the
-authorized workspace summary. Detailed financial features are delivered in
-later issues: their controls are disabled with explanations. Add transaction
-opens the accessible method chooser; manual entry, SMS and image processing
-remain disabled until their APIs and screens are delivered.
+authorized workspace summary. Open Transactions to record an expense, income,
+transfer or refund, search and filter the list, and review, edit or void a saved
+transaction. Dashboard's Add transaction menu also leads to manual entry.
+SMS and image import are planned for later issues.
 
 To run the full local navigation/accessibility check:
 

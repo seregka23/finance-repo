@@ -93,4 +93,19 @@ export interface RefundRecord extends RefundInput {
   updatedAt: string;
 }
 
-export type AnyTransactionRecord = TransactionRecord | TransferRecord | FeeRecord | RefundRecord;
+export type AnyTransactionRecord =
+  TransactionRecord | TransferRecord | FeeRecord | RefundRecord;
+
+export interface TransactionListOptions {
+  limit: number;
+  cursor: { transactionDate: string; id: string } | null;
+  status?: 'posted' | 'void';
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  type?: 'expense' | 'income' | 'transfer' | 'fee' | 'refund';
+  categoryId?: string;
+  accountId?: string;
+  ownerMemberId?: string;
+  currency?: Currency;
+}

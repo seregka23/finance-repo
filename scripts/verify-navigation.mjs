@@ -122,10 +122,21 @@ async function run() {
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
   const context = await browser.newContext({
+    locale: "en-US",
     viewport: { width: 1440, height: 1000 },
   });
   const page = await context.newPage();
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  async function api(path, method, body, status, headers = {}) {
+    const response = await page.request.fetch(`${base}/api/v1${path}`, {
+      method,
+      headers: { Origin: base, ...headers },
+      ...(body === undefined ? {} : { data: body }),
+    });
+    const result = await response.text();
+    assert.equal(response.status(), status, `${method} ${path}: ${result}`);
+    return JSON.parse(result);
+  }
   const nav = () => page.getByRole("navigation", { name: "Main navigation" });
   async function navigate(name) {
     const changed = new URL(page.url()).pathname !== "/" + name.toLowerCase();
@@ -241,7 +252,7 @@ async function run() {
     await check(
       `${size}: transaction chooser keyboard containment, Escape and focus restoration`,
       async () => {
-        await navigate("Transactions");
+        await navigate("Dashboard");
         const opener = page.getByRole("button", {
           name: "Add transaction",
           exact: true,
@@ -250,7 +261,7 @@ async function run() {
         await page.keyboard.press("Enter");
         const dialog = page.getByRole("dialog");
         await dialog.waitFor();
-        for (const name of ["Enter manually", "Paste SMS", "Upload image"])
+        for (const name of ["Paste SMS", "Upload image"])
           assert.ok(
             await dialog
               .getByRole("button", { name, exact: true })
@@ -359,7 +370,7 @@ async function run() {
         await route.continue();
       });
       const reload = page.reload();
-      await page.getByText("Loading reports…", { exact: true }).waitFor();
+      await page.getByText("Loading Reports…", { exact: true }).waitFor();
       assert.equal(await page.locator(".empty").count(), 0);
       release();
       await reload;
@@ -383,7 +394,7 @@ async function run() {
       await page.reload();
       await page
         .getByRole("alert")
-        .filter({ hasText: "Workspace unavailable" })
+        .filter({ hasText: "The service is temporarily unavailable." })
         .waitFor();
       assert.equal(await page.locator(".empty").count(), 0);
       fail = false;
@@ -412,7 +423,7 @@ async function run() {
         .getByRole("heading", { name: "Reports", level: 1, exact: true })
         .waitFor();
       await page.setViewportSize({ width: 320, height: 740 });
-      await navigate("Transactions");
+      await navigate("Dashboard");
       await page
         .getByRole("button", { name: "Add transaction", exact: true })
         .click();
@@ -427,6 +438,7 @@ async function run() {
           select.dispatchEvent(new Event("change", { bubbles: true }));
         }, created.id);
       await dialog.waitFor({ state: "hidden" });
+      await navigate("Transactions");
       await page
         .getByText(
           "Start by adding an account before recording transactions.",
@@ -443,13 +455,283 @@ async function run() {
       await axe(page, "320px transactions with household selector");
     },
   );
+  await check(
+    "manual expense, insufficient funds, stale edit and void on mobile",
+    async () => {
+      const selected = await page
+        .getByLabel("Household", { exact: true })
+        .inputValue();
+      const path = `/households/${selected}`;
+      const account = await api(
+        `${path}/accounts`,
+        "POST",
+        {
+          name: "Browser transaction cash",
+          type: "cash",
+          currency: "RSD",
+          ownerMemberId: null,
+          designation: "personal",
+          openingBalanceMinor: "100000",
+          openingDate: "2026-01-01",
+        },
+        201,
+      );
+      const category = await api(
+        `${path}/categories`,
+        "POST",
+        { name: "Browser groceries", type: "expense" },
+        201,
+      );
+      await page.reload();
+      await page
+        .getByLabel("Household", { exact: true })
+        .selectOption(selected);
+      await navigate("Dashboard");
+      await page
+        .getByRole("button", { name: "Add transaction", exact: true })
+        .click();
+      await page
+        .getByRole("dialog")
+        .getByText("Enter manually", { exact: true })
+        .click();
+      await page.waitForURL("**/transactions**");
+      const balance = async () =>
+        (await api(`${path}/accounts/${account.id}`, "GET", undefined, 200))
+          .balanceMinor;
+      const editor = page.locator(".entry-form");
+      const field = (name) => editor.getByLabel(name);
+      const save = editor.getByRole("button", { name: "Save", exact: true });
+      const transactionUrl = `${base}/api/v1${path}/transactions`;
+      const mutation = (method, url = transactionUrl) =>
+        page.waitForResponse(
+          (response) =>
+            response.url() === url && response.request().method() === method,
+        );
+      const submit = async (method, status, url) => {
+        const pending = mutation(method, url);
+        await save.click();
+        const response = await pending;
+        assert.equal(response.status(), status);
+        return response.json();
+      };
+      const merchant = "Browser market 100%_";
+      await editor.waitFor();
+      assert.equal(await field("Account").inputValue(), account.id);
+      const today = Intl.DateTimeFormat("en-CA", {
+        timeZone: "Europe/Belgrade",
+        dateStyle: "short",
+      }).format(new Date());
+      assert.equal(await field("Date").inputValue(), today);
+      await field("Category").selectOption(category.id);
+      await field("Merchant").fill(merchant);
+      await field("Amount").fill("1001.00");
+      await submit("POST", 409);
+      await page
+        .getByRole("alert")
+        .filter({ hasText: "Insufficient funds" })
+        .waitFor();
+      assert.equal(await field("Amount").inputValue(), "1001.00");
+      assert.equal(await balance(), "100000");
+      await field("Amount").fill("12.34");
+      await field("Amount").press("Tab");
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await axe(page, "320px expense form");
+      const created = await submit("POST", 201);
+      assert.equal(created.amountMinor, "1234");
+      await page.getByRole("button", { name: merchant, exact: true }).waitFor();
+      assert.equal(await balance(), "98766");
+
+      const rowPath = `${path}/transactions/${created.id}`;
+      const rowUrl = `${transactionUrl}/${created.id}`;
+      await page.getByRole("button", { name: "Edit", exact: true }).click();
+      await field("Amount").fill("20.00");
+      await api(
+        rowPath,
+        "PATCH",
+        {
+          type: "expense",
+          accountId: account.id,
+          categoryId: category.id,
+          currency: "RSD",
+          exchangeRate: null,
+          exchangeRateSource: null,
+          transactionDate: created.transactionDate,
+          merchant,
+          note: "Changed elsewhere",
+          version: created.version,
+          amountMinor: "1300",
+        },
+        200,
+      );
+      await submit("PATCH", 409, rowUrl);
+      const review = page.getByRole("button", {
+        name: "I reviewed the current version",
+      });
+      await review.waitFor();
+      assert.equal(await field("Amount").inputValue(), "20.00");
+      assert.equal(await save.isDisabled(), true);
+      await review.click();
+      const edited = await submit("PATCH", 200, rowUrl);
+      assert.equal(edited.amountMinor, "2000");
+      assert.equal(await balance(), "98000");
+      await page.getByRole("button", { name: "Void", exact: true }).waitFor();
+      page.once("dialog", (dialog) => dialog.accept());
+      const pendingVoid = mutation("POST", `${rowUrl}/void`);
+      await page.getByRole("button", { name: "Void", exact: true }).click();
+      assert.equal((await pendingVoid).status(), 200);
+      assert.equal(await balance(), "100000");
+      await page.getByLabel("Search", { exact: true }).fill("100%_");
+      await page
+        .getByRole("button", { name: "Apply filters", exact: true })
+        .click();
+      await page.getByRole("button", { name: merchant, exact: true }).waitFor();
+      assert.ok(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
+      await axe(page, "320px transaction list and detail");
+      await screenshot(page, "mobile-manual-transaction");
+    },
+  );
+  await check(
+    "desktop income, transfer with fee, and linked refund",
+    async () => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      const selected = await page
+        .getByLabel("Household", { exact: true })
+        .inputValue();
+      const path = `/households/${selected}`;
+      const { accounts } = await api(`${path}/accounts`, "GET", undefined, 200);
+      const cash = accounts.find(
+        (account) => account.name === "Browser transaction cash",
+      );
+      assert(cash);
+      const eur = await api(
+        `${path}/accounts`,
+        "POST",
+        {
+          name: "Browser euro account",
+          type: "bank",
+          currency: "EUR",
+          ownerMemberId: null,
+          designation: "personal",
+          openingBalanceMinor: "0",
+          openingDate: "2026-01-01",
+        },
+        201,
+      );
+      const income = await api(
+        `${path}/categories`,
+        "POST",
+        { name: "Browser salary", type: "income" },
+        201,
+      );
+      const { categories } = await api(
+        `${path}/categories`,
+        "GET",
+        undefined,
+        200,
+      );
+      const expense = categories.find(
+        (category) => category.name === "Browser groceries",
+      );
+      assert(expense);
+      const purchase = await api(
+        `${path}/transactions`,
+        "POST",
+        {
+          type: "expense",
+          accountId: cash.id,
+          categoryId: expense.id,
+          currency: "RSD",
+          amountMinor: "800",
+          merchant: "Browser purchase",
+          transactionDate: "2026-01-02",
+        },
+        201,
+        { "Idempotency-Key": "browser-refund-purchase" },
+      );
+      await page.goto(`${base}/transactions`);
+      await page
+        .getByLabel("Household", { exact: true })
+        .selectOption(selected);
+      const editor = page.locator(".entry-form");
+      const field = (name) => editor.getByLabel(name);
+      async function start(type) {
+        await page
+          .getByRole("button", { name: "Add transaction", exact: true })
+          .click();
+        await field("Type").selectOption(type);
+      }
+      async function save(merchant) {
+        await field("Merchant").fill(merchant);
+        const pending = page.waitForResponse(
+          (response) =>
+            response.url() === `${base}/api/v1${path}/transactions` &&
+            response.request().method() === "POST",
+        );
+        await editor.getByRole("button", { name: "Save", exact: true }).click();
+        const response = await pending;
+        assert.equal(response.status(), 201, await response.text());
+        await editor.waitFor({ state: "hidden" });
+        return response.json();
+      }
+      await start("income");
+      await field("Account").selectOption(eur.id);
+      await field("Amount").fill("5.00");
+      await field("Category").selectOption(income.id);
+      await field("Exchange rate").fill("120");
+      await field("Rate source").fill("Manual");
+      assert.equal((await save("Browser income")).rsdEquivalentMinor, "60000");
+
+      await start("transfer");
+      await field("From account").selectOption(cash.id);
+      await field("To account").selectOption(eur.id);
+      await field("Debit amount").fill("600");
+      await field("Credit amount").fill("5");
+      await field("Fee amount (optional)").fill("1");
+      await field("Fee category").selectOption(expense.id);
+      await axe(page, "desktop transfer form");
+      const transfer = await save("Browser transfer");
+      assert.deepEqual(
+        [
+          transfer.debitAmountMinor,
+          transfer.creditAmountMinor,
+          transfer.fee.amountMinor,
+        ],
+        ["60000", "500", "100"],
+      );
+
+      await start("refund");
+      await field("Purchase").selectOption(purchase.id);
+      await field("Account").selectOption(cash.id);
+      await field("Amount").fill("2.00");
+      const refund = await save("Browser refund");
+      assert.equal(refund.purchaseTransactionId, purchase.id);
+      assert.equal(refund.categoryId, expense.id);
+      assert.equal(refund.amountMinor, "200");
+      assert.equal(
+        (await api(`${path}/accounts/${cash.id}`, "GET", undefined, 200))
+          .balanceMinor,
+        "39300",
+      );
+      assert.equal(
+        (await api(`${path}/accounts/${eur.id}`, "GET", undefined, 200))
+          .balanceMinor,
+        "1000",
+      );
+      await axe(page, "desktop transaction details");
+      await screenshot(page, "desktop-manual-transactions");
+    },
+  );
   assert.deepEqual(pageErrors, [], "browser page errors");
   await writeFile(
     join(artifacts, "report.json"),
     JSON.stringify(
       {
         checks,
-        axe: "Zero WCAG A/AA violations in 12 route states, two chooser states, settings and 320px household switching",
+        axe: "Zero WCAG A/AA violations in the scanned route, chooser, form and detail states",
         pageErrors,
         fixture: "actual local Worker/D1 with native synthetic accounts",
       },

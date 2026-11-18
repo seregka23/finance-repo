@@ -1,0 +1,88 @@
+.filters,
+.entry-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+  align-items: end;
+}
+.filters label,
+.entry-form label {
+  display: grid;
+  gap: 4px;
+  font-weight: 650;
+  font-size: 12px;
+}
+.transaction-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 0;
+}
+.transaction-row strong {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.row-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--pine);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.detail {
+  margin-top: 16px;
+}
+.detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+.detail p {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+@media (max-width: 680px) {
+  .filters,
+  .entry-form {
+    grid-template-columns: 1fr 1fr;
+  }
+  .transaction-row {
+    align-items: start;
+  }
+}
+.filters label,
+.entry-form label,
+.filters .field,
+.entry-form .field,
+.transaction-row > div,
+.transaction-row strong {
+  min-width: 0;
+}
+.transaction-row > div,
+.transaction-row strong {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 680px) {
+  .filters,
+  .entry-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 360px) {
+  .filters,
+  .entry-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

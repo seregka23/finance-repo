@@ -1,0 +1,118 @@
+import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { vi } from 'vitest';
+import { Transactions } from './transactions';
+import { Api } from '../../core/api';
+import { Workspace } from '../../core/workspace';
+import { AccountsService } from '../accounts/accounts.service';
+import { CategoriesService } from '../categories/categories.service';
+import { FormGroup } from '@angular/forms';
+
+it('keeps pagination on applied filters and suppresses duplicate rows', async () => {
+  const request = vi
+    .fn()
+    .mockImplementation((path: string) =>
+      Promise.resolve(
+        path.includes('cursor=')
+          ? { transactions: [{ id: 'one' }, { id: 'two' }], nextCursor: null }
+          : { transactions: [{ id: 'one' }], nextCursor: 'next' },
+      ),
+    );
+  const api = {
+    selectedId: Object.assign(() => 'h', {}),
+    session: () => ({ households: [{ id: 'h', timeZone: 'UTC' }] }),
+    request,
+    handleError: async () => 'error',
+  };
+  TestBed.configureTestingModule({
+    imports: [Transactions],
+    providers: [
+      provideRouter([]),
+      { provide: Api, useValue: api },
+      { provide: Workspace, useValue: { load: vi.fn() } },
+      {
+        provide: AccountsService,
+        useValue: { list: async () => ({ accounts: [] }), members: async () => ({ members: [] }) },
+      },
+      { provide: CategoriesService, useValue: { list: async () => ({ categories: [] }) } },
+    ],
+  });
+  const fixture = TestBed.createComponent(Transactions);
+  await fixture.whenStable();
+  const component = fixture.componentInstance as unknown as {
+    filters: FormGroup;
+    load(more?: boolean): Promise<void>;
+    rows(): { id: string }[];
+  };
+  component.filters.patchValue({ search: 'first' });
+  await component.load();
+  component.filters.patchValue({ search: 'draft' });
+  await component.load(true);
+  expect(request.mock.calls.at(-1)?.[0]).toContain('search=first');
+  expect(request.mock.calls.at(-1)?.[0]).not.toContain('draft');
+  expect(component.rows().map((r) => r.id)).toEqual(['one', 'two']);
+});
+
+it('keeps a new draft when an earlier detail request completes late', async () => {
+  let resolveDetail!: (value: unknown) => void;
+  const detail = new Promise((resolve) => {
+    resolveDetail = resolve;
+  });
+  const row = {
+    id: 'old',
+    type: 'expense',
+    transactionDate: '2026-11-01',
+    status: 'posted',
+    version: 1,
+    authorMemberId: 'm',
+    merchant: 'Old',
+    note: null,
+  };
+  const request = vi
+    .fn()
+    .mockImplementation((path: string) =>
+      path.endsWith('/old') ? detail : Promise.resolve({ transactions: [], nextCursor: null }),
+    );
+  TestBed.configureTestingModule({
+    imports: [Transactions],
+    providers: [
+      provideRouter([]),
+      {
+        provide: Api,
+        useValue: {
+          selectedId: () => 'h',
+          session: () => ({ households: [{ id: 'h', timeZone: 'UTC', memberId: 'm' }] }),
+          request,
+          handleError: async () => 'error',
+        },
+      },
+      { provide: Workspace, useValue: { load: vi.fn() } },
+      {
+        provide: AccountsService,
+        useValue: {
+          list: async () => ({ accounts: [{ id: 'a', status: 'active', currency: 'RSD' }] }),
+          members: async () => ({ members: [] }),
+        },
+      },
+      { provide: CategoriesService, useValue: { list: async () => ({ categories: [] }) } },
+    ],
+  });
+  const fixture = TestBed.createComponent(Transactions);
+  await fixture.whenStable();
+  const component = fixture.componentInstance as unknown as {
+    open(item: typeof row): Promise<void>;
+    create(): void;
+    editing(): boolean;
+    selected(): unknown;
+    form: FormGroup;
+  };
+  const pending = component.open(row);
+  component.create();
+  component.form.patchValue({ merchant: 'Draft' });
+  component.create();
+  resolveDetail(row);
+  await pending;
+  expect(component.editing()).toBe(true);
+  expect(component.selected()).toBeNull();
+  expect(component.form.value.merchant).toBe('Draft');
+});

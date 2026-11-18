@@ -4,7 +4,12 @@ import type { Identity } from '../auth/auth.js';
 import { validateDate } from '../finance/calendar.js';
 import { recordConversion } from '../finance/fx.js';
 import { parseMinor, validateCurrency } from '../finance/money.js';
-import type { PostingInput, TransferInput, RefundInput } from './contracts.js';
+import type {
+  PostingInput,
+  TransferInput,
+  RefundInput,
+  TransactionListOptions,
+} from './contracts.js';
 import { PostingRepository } from './posting.repository.js';
 
 const invalid = () => apiError(400, 'INVALID_INPUT', 'Invalid input');
@@ -282,7 +287,19 @@ export class TransactionsService {
     return this.repository.get(identity, householdId, id);
   }
   list(identity: Identity, householdId: string, query: unknown) {
-    const q = fields(query, ['limit', 'cursor']);
+    const q = fields(query, [
+      'limit',
+      'cursor',
+      'search',
+      'dateFrom',
+      'dateTo',
+      'type',
+      'status',
+      'categoryId',
+      'accountId',
+      'ownerMemberId',
+      'currency',
+    ]);
     if (
       q.limit !== undefined &&
       (typeof q.limit !== 'string' || !/^(?:[1-9]|[1-9]\d|100)$/.test(q.limit))
@@ -311,6 +328,37 @@ export class TransactionsService {
         throw invalid();
       }
     }
-    return this.repository.list(identity, householdId, { limit, cursor });
+    const options: TransactionListOptions = { limit, cursor };
+    try {
+      if (q.search !== undefined) options.search = requiredText(q.search, 200);
+      if (q.dateFrom !== undefined) options.dateFrom = validateDate(q.dateFrom);
+      if (q.dateTo !== undefined) options.dateTo = validateDate(q.dateTo);
+      if (
+        options.dateFrom &&
+        options.dateTo &&
+        options.dateFrom > options.dateTo
+      )
+        throw invalid();
+      if (q.status !== undefined) {
+        if (q.status !== 'posted' && q.status !== 'void') throw invalid();
+        options.status = q.status;
+      }
+      if (q.type !== undefined) {
+        if (
+          typeof q.type !== 'string' ||
+          !['expense', 'income', 'transfer', 'fee', 'refund'].includes(q.type)
+        )
+          throw invalid();
+        options.type = q.type as TransactionListOptions['type'];
+      }
+      for (const key of ['categoryId', 'accountId', 'ownerMemberId'] as const) {
+        if (q[key] !== undefined) options[key] = requiredText(q[key], 200);
+      }
+      if (q.currency !== undefined)
+        options.currency = validateCurrency(q.currency);
+    } catch {
+      throw invalid();
+    }
+    return this.repository.list(identity, householdId, options);
   }
 }
