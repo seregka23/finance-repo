@@ -3,6 +3,16 @@
     <h1 tabindex="-1">{{ i18n.t('Accounts') }}</h1>
     <p>{{ i18n.t('Balances, owners, and available funds by account.') }}</p>
   </div>
+  @if (api.selectedId()) {
+    <button
+      class="btn primary"
+      type="button"
+      [disabled]="busy() || editing()"
+      (click)="create($event)"
+    >
+      {{ i18n.t('Add account') }}
+    </button>
+  }
 </div>
 @if (!api.selectedId()) {
   <section class="panel">
@@ -11,7 +21,7 @@
     <a class="btn" routerLink="/settings">{{ i18n.t('Go to household settings') }}</a>
   </section>
 } @else {
-  @if (error()) {
+  @if (error() && !creating()) {
     <div class="alert" role="alert">{{ i18n.t(error()) }}</div>
   }
   @if (success()) {
@@ -195,107 +205,130 @@
           </section>
         }
       </div>
-      <section class="panel" aria-labelledby="form-heading">
-        <h2 id="form-heading">
-          {{ editing() ? i18n.t('Edit account') : i18n.t('Add an account') }}
-        </h2>
-        <p class="sub">
-          {{
-            editing()
-              ? i18n.t('Update account details.')
-              : i18n.t('Set the opening balance as of a date.')
-          }}
-        </p>
-        <form [formGroup]="form" (ngSubmit)="save()">
-          <label
-            >{{ i18n.t('Name')
-            }}<input class="field" formControlName="name" maxlength="100" required
-          /></label>
-          <label
-            >{{ i18n.t('Type')
-            }}<select class="field" formControlName="type">
-              <option value="cash">{{ i18n.t('Cash') }}</option>
-              <option value="bank">{{ i18n.t('Bank') }}</option>
-              <option value="card">{{ i18n.t('Card') }}</option>
-            </select></label
-          >
-          <label
-            >{{ i18n.t('Currency')
-            }}<select class="field" formControlName="currency">
-              <option>RSD</option>
-              <option>EUR</option>
-              <option>RUB</option>
-              <option>USD</option>
-            </select></label
-          >
-          @if (editing() && selected()?.currencyLocked) {
-            <p class="sub">{{ i18n.t('Currency cannot change after the first transaction.') }}</p>
-          }
-          @if (editing() && !selected()?.currencyLocked) {
-            <p class="sub">
-              {{
-                i18n.t(
-                  "Changing currency keeps the same amounts. Use this only to correct the account's currency."
-                )
-              }}
-            </p>
-          }
-          <label
-            >{{ i18n.t('Owner')
-            }}<select class="field" formControlName="ownerMemberId">
-              <option value="">{{ i18n.t('Household') }}</option>
-              @if (editing() && inactiveOwner(selected()?.ownerMemberId ?? null)) {
-                <option [value]="selected()!.ownerMemberId" disabled>
-                  {{ owner(selected()!.ownerMemberId) }} ({{ i18n.t('inactive') }})
-                </option>
-              }
-              @for (member of members(); track member.id) {
-                @if (member.status === 'active') {
-                  <option [value]="member.id">
-                    {{ member.email || i18n.t('Household member') }}
-                  </option>
-                }
-              }
-            </select></label
-          >
-          <label
-            >{{ i18n.t('Designation')
-            }}<select class="field" formControlName="designation">
-              <option value="personal">{{ i18n.t('Personal') }}</option>
-              <option value="business">{{ i18n.t('Business') }}</option>
-            </select></label
-          >
-          @if (!editing()) {
-            <label
-              >{{ i18n.t('Opening balance')
-              }}<input class="field" formControlName="opening" inputmode="decimal" required
-            /></label>
-            <p class="hint">
-              {{ i18n.t('Use a dot as the decimal separator, for example 10.50.') }}
-            </p>
-            <label
-              >{{ i18n.t('As of date')
-              }}<input class="field" type="date" formControlName="date" required
-            /></label>
-          }
-          <div class="actions">
-            <button class="btn primary" type="submit" [disabled]="busy()">
-              {{
-                busy()
-                  ? i18n.t('Saving…')
-                  : editing()
-                    ? i18n.t('Save changes')
-                    : i18n.t('Create financial account')
-              }}
-            </button>
-            @if (editing()) {
-              <button class="btn" type="button" [disabled]="busy()" (click)="resetForm()">
-                {{ i18n.t('Cancel edit') }}
-              </button>
-            }
-          </div>
-        </form>
-      </section>
+      @if (editing()) {
+        <section class="panel" aria-labelledby="form-heading">
+          <h2 id="form-heading">{{ i18n.t('Edit account') }}</h2>
+          <p class="sub">{{ i18n.t('Update account details.') }}</p>
+          <ng-container *ngTemplateOutlet="accountForm" />
+        </section>
+      }
     </div>
   }
 }
+
+<dialog
+  #creationDialog
+  aria-labelledby="create-account-heading"
+  (cancel)="cancelCreate($event)"
+  (keydown)="containFocus($event)"
+>
+  <div class="dialogbody">
+    <div class="detail-head">
+      <h2 id="create-account-heading" tabindex="-1" autofocus>{{ i18n.t('Add account') }}</h2>
+      <button class="btn" type="button" [disabled]="busy()" (click)="cancelCreate()">
+        {{ i18n.t('Close') }}
+      </button>
+    </div>
+    <p class="sub">{{ i18n.t('Set the opening balance as of a date.') }}</p>
+    @if (error() && creating()) {
+      <div class="alert" role="alert">{{ i18n.t(error()) }}</div>
+    }
+    @if (creating()) {
+      <ng-container *ngTemplateOutlet="accountForm" />
+    }
+  </div>
+</dialog>
+<ng-template #accountForm>
+  <form [formGroup]="form" (ngSubmit)="save()">
+    <label
+      >{{ i18n.t('Name') }}<input class="field" formControlName="name" maxlength="100" required
+    /></label>
+    <label
+      >{{ i18n.t('Type')
+      }}<select class="field" formControlName="type">
+        <option value="cash">{{ i18n.t('Cash') }}</option>
+        <option value="bank">{{ i18n.t('Bank') }}</option>
+        <option value="card">{{ i18n.t('Card') }}</option>
+      </select></label
+    >
+    <label
+      >{{ i18n.t('Currency')
+      }}<select class="field" formControlName="currency">
+        <option>RSD</option>
+        <option>EUR</option>
+        <option>RUB</option>
+        <option>USD</option>
+      </select></label
+    >
+    @if (editing() && selected()?.currencyLocked) {
+      <p class="sub">{{ i18n.t('Currency cannot change after the first transaction.') }}</p>
+    }
+    @if (editing() && !selected()?.currencyLocked) {
+      <p class="sub">
+        {{
+          i18n.t(
+            "Changing currency keeps the same amounts. Use this only to correct the account's currency."
+          )
+        }}
+      </p>
+    }
+    <label
+      >{{ i18n.t('Owner')
+      }}<select class="field" formControlName="ownerMemberId">
+        <option value="">{{ i18n.t('Household') }}</option>
+        @if (editing() && inactiveOwner(selected()?.ownerMemberId ?? null)) {
+          <option [value]="selected()!.ownerMemberId" disabled>
+            {{ owner(selected()!.ownerMemberId) }} ({{ i18n.t('inactive') }})
+          </option>
+        }
+        @for (member of members(); track member.id) {
+          @if (member.status === 'active') {
+            <option [value]="member.id">
+              {{ member.email || i18n.t('Household member') }}
+            </option>
+          }
+        }
+      </select></label
+    >
+    <label
+      >{{ i18n.t('Designation')
+      }}<select class="field" formControlName="designation">
+        <option value="personal">{{ i18n.t('Personal') }}</option>
+        <option value="business">{{ i18n.t('Business') }}</option>
+      </select></label
+    >
+    @if (!editing()) {
+      <label
+        >{{ i18n.t('Opening balance')
+        }}<input class="field" formControlName="opening" inputmode="decimal" required
+      /></label>
+      <p class="hint">
+        {{ i18n.t('Use a dot as the decimal separator, for example 10.50.') }}
+      </p>
+      <label
+        >{{ i18n.t('As of date') }}<input class="field" type="date" formControlName="date" required
+      /></label>
+    }
+    <div class="actions">
+      <button class="btn primary" type="submit" [disabled]="busy()">
+        {{
+          busy()
+            ? i18n.t('Saving…')
+            : editing()
+              ? i18n.t('Save changes')
+              : i18n.t('Create financial account')
+        }}
+      </button>
+      @if (!editing()) {
+        <button class="btn" type="button" [disabled]="busy()" (click)="cancelCreate()">
+          {{ i18n.t('Cancel') }}
+        </button>
+      }
+      @if (editing()) {
+        <button class="btn" type="button" [disabled]="busy()" (click)="resetForm()">
+          {{ i18n.t('Cancel edit') }}
+        </button>
+      }
+    </div>
+  </form>
+</ng-template>

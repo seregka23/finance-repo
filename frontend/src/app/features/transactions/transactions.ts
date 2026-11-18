@@ -1,13 +1,24 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Api, ApiError, Members } from '../../core/api';
 import { Localization } from '../../core/i18n/localization';
 import { Workspace } from '../../core/workspace';
 import { AccountsService } from '../accounts/accounts.service';
 import { Account } from '../accounts/account.model';
 import { CategoriesService, Category } from '../categories/categories.service';
+import { NgTemplateOutlet } from '@angular/common';
+import { containDialogFocus, openCreationDialog } from '../../shared/ui/creation-dialog';
 import { decimalToMinor, formatMinor } from '../../shared/formatters/formatters';
 
 type Kind = 'expense' | 'income' | 'transfer' | 'refund' | 'fee';
@@ -47,7 +58,7 @@ interface Page {
   nextCursor: string | null;
 }
 @Component({
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, NgTemplateOutlet],
   templateUrl: './transactions.html',
   styleUrl: './transactions.css',
 })
@@ -58,6 +69,12 @@ export class Transactions {
   private readonly categoriesService = inject(CategoriesService);
   private readonly workspace = inject(Workspace);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly dialog = viewChild<ElementRef<HTMLDialogElement>>('creationDialog');
+  protected readonly containFocus = containDialogFocus;
+  private opener: HTMLElement | null = null;
+  private operation = 0;
+  private pendingCreate = this.route.snapshot.queryParamMap.has('create');
   private readonly fb = inject(FormBuilder);
   protected readonly accounts = signal<Account[]>([]);
   protected readonly categories = signal<Category[]>([]);
@@ -126,6 +143,7 @@ export class Transactions {
         this.listGeneration++;
         this.purchaseGeneration++;
       });
+      untracked(() => this.cancelCreate(undefined, true));
       this.rows.set([]);
       this.accounts.set([]);
       this.categories.set([]);
@@ -181,12 +199,16 @@ export class Transactions {
       this.categories.set(c.categories);
       this.members.set(m.members);
       await this.load();
-      if (
-        this.current(id, g) &&
-        this.route.snapshot.queryParamMap.has('create') &&
-        this.active().length
-      )
-        this.create();
+      if (this.current(id, g) && this.pendingCreate) {
+        this.pendingCreate = false;
+        void this.router.navigate([], {
+          relativeTo: this.route,
+          queryParams: { create: null },
+          queryParamsHandling: 'merge',
+          replaceUrl: true,
+        });
+        if (this.active().length) this.create();
+      }
     } catch (e) {
       if (this.current(id, g)) {
         const message = await this.api.handleError(e);
@@ -284,8 +306,9 @@ export class Transactions {
   private focusPanel() {
     requestAnimationFrame(() => document.querySelector<HTMLElement>('.detail h2')?.focus());
   }
-  protected create() {
+  protected create(event?: Event) {
     if (this.busy() || this.editing() || !this.active().length) return;
+    this.opener = (event?.currentTarget as HTMLElement | null) ?? null;
     this.detailGeneration++;
     this.selected.set(null);
     this.review.set(null);
@@ -298,7 +321,6 @@ export class Transactions {
       saved = localStorage.getItem(`transaction-account:${id}:${member}`) ?? '';
     } catch {}
     const account = this.active().find((a) => a.id === saved) ?? this.active()[0];
-    this.focusPanel();
     this.form.reset({
       type: 'expense',
       transactionDate: this.today(),
@@ -318,6 +340,25 @@ export class Transactions {
       feeRate: '',
       feeRateSource: '',
       purchaseTransactionId: '',
+    });
+    openCreationDialog(this.dialog()?.nativeElement);
+  }
+  protected cancelCreate(event?: Event, force = false): void {
+    event?.preventDefault();
+    if (this.busy() && !force) return;
+    if (!this.editing() || this.selected()) return;
+    this.operation++;
+    this.busy.set(false);
+    this.editing.set(false);
+    this.dialog()?.nativeElement.close();
+    this.error.set('');
+    const opener = this.opener;
+    this.opener = null;
+    requestAnimationFrame(() => {
+      const fallback = document.querySelector<HTMLElement>(
+        '.pagehead button:not(:disabled), .pagehead h1',
+      );
+      (opener?.isConnected ? opener : fallback)?.focus();
     });
   }
   protected async open(row: Row) {
@@ -512,6 +553,7 @@ export class Transactions {
       this.lastPayload = serialized;
     }
     const g = this.generation;
+    const operation = this.operation;
     this.busy.set(true);
     this.error.set('');
     try {
@@ -521,7 +563,7 @@ export class Transactions {
         row ? { ...body, version: row.version } : body,
         row ? undefined : { 'Idempotency-Key': this.key },
       );
-      if (!this.current(id, g)) return;
+      if (!this.current(id, g) || operation !== this.operation) return;
       try {
         const member = this.api.session()?.households.find((h) => h.id === id)?.memberId ?? '';
         localStorage.setItem(
@@ -529,6 +571,7 @@ export class Transactions {
           v.type === 'transfer' ? v.fromAccountId : v.accountId,
         );
       } catch {}
+      if (!row) this.cancelCreate(undefined, true);
       this.selected.set(saved);
       this.editing.set(false);
       this.lastPayload = '';
@@ -536,7 +579,7 @@ export class Transactions {
       void this.workspace.load(id);
       await this.load();
     } catch (e) {
-      if (!this.current(id, g)) return;
+      if (!this.current(id, g) || operation !== this.operation) return;
       if (
         row &&
         e instanceof ApiError &&
@@ -558,7 +601,7 @@ export class Transactions {
         }
       } else await this.showError(e, id, g);
     } finally {
-      if (this.current(id, g)) this.busy.set(false);
+      if (this.current(id, g) && operation === this.operation) this.busy.set(false);
     }
   }
   protected acknowledge() {

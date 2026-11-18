@@ -1,3 +1,10 @@
+// jsdom does not implement native dialog methods.
+HTMLDialogElement.prototype.showModal ??= function () {
+  this.setAttribute('open', '');
+};
+HTMLDialogElement.prototype.close ??= function () {
+  this.removeAttribute('open');
+};
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { vi } from 'vitest';
@@ -92,6 +99,8 @@ describe('account household boundaries', () => {
     const pending = deferred<Account>();
     const { api, fixture, service, load, element } = await setup(async () => ({ accounts: [] }));
     service.create.mockReturnValue(pending.promise);
+    element.querySelector<HTMLButtonElement>('.pagehead button')!.click();
+    await fixture.whenStable();
     await vi.waitFor(() =>
       expect(element.querySelector('input[formcontrolname="name"]')).not.toBeNull(),
     );
@@ -109,14 +118,14 @@ describe('account household boundaries', () => {
     await Promise.resolve();
     await fixture.whenStable();
     expect(element.textContent).not.toContain('Previous private account');
-    expect(element.querySelector<HTMLInputElement>('input[formcontrolname="name"]')!.value).toBe(
-      '',
-    );
+    expect(element.querySelector('input[formcontrolname="name"]')).toBeNull();
     expect(load).not.toHaveBeenCalled();
   });
   it('defaults financial dates to the household date around UTC midnight', async () => {
     vi.setSystemTime(new Date('2026-01-01T23:30:00Z'));
-    const { element } = await setup(async () => ({ accounts: [] }));
+    const { element, fixture } = await setup(async () => ({ accounts: [] }));
+    element.querySelector<HTMLButtonElement>('.pagehead button')!.click();
+    await fixture.whenStable();
     await vi.waitFor(() => expect(element.querySelector('input[type="date"]')).not.toBeNull());
     expect(element.querySelector<HTMLInputElement>('input[type="date"]')!.value).toBe('2026-01-02');
   });

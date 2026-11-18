@@ -95,7 +95,12 @@ try {
       .getByRole("link", { name: "Accounts", exact: true })
       .click();
     let accountId;
-    const form = page
+    const opener = page.locator(".pagehead").getByRole("button", {
+      name: "Add account",
+      exact: true,
+    });
+    const dialog = page.getByRole("dialog");
+    const form = dialog
       .locator("form")
       .filter({ has: page.getByLabel("Opening balance", { exact: true }) });
     await check(
@@ -107,6 +112,37 @@ try {
             { exact: true },
           )
           .waitFor();
+        assert.equal(await dialog.isVisible(), false);
+        await opener.focus();
+        await page.keyboard.press("Enter");
+        await dialog.waitFor();
+        assert.ok(
+          await dialog.evaluate((el) => el.contains(document.activeElement)),
+        );
+        await page.keyboard.press("Tab");
+        await page.keyboard.press("Shift+Tab");
+        assert.ok(
+          await dialog.evaluate((el) => el.contains(document.activeElement)),
+        );
+        await form
+          .getByLabel("Name", { exact: true })
+          .fill("Discard this draft");
+        await page.keyboard.press("Escape");
+        await dialog.waitFor({ state: "hidden" });
+        assert.ok(await opener.evaluate((el) => el === document.activeElement));
+        await page
+          .getByRole("navigation", { name: "Main navigation" })
+          .getByRole("link", { name: "Dashboard", exact: true })
+          .click();
+        await page
+          .getByRole("link", { name: "Add account", exact: true })
+          .click();
+        await dialog.waitFor();
+        assert.equal(new URL(page.url()).pathname, "/accounts");
+        assert.equal(
+          await form.getByLabel("Name", { exact: true }).inputValue(),
+          "",
+        );
         await form.getByLabel("Name", { exact: true }).fill("Browser cash");
         await form.getByLabel("Type").selectOption("cash");
         await form
@@ -127,6 +163,7 @@ try {
           .click();
         const created = await saved;
         assert.equal(created.status(), 201);
+        await dialog.waitFor({ state: "hidden" });
         accountId = (await created.json()).id;
         await page
           .getByRole("button", { name: "View Browser cash", exact: true })
@@ -306,7 +343,9 @@ try {
       await page
         .getByRole("button", { name: "Close details", exact: true })
         .click();
-      const f = page
+      await opener.click();
+      await dialog.waitFor();
+      const f = dialog
         .locator("form")
         .filter({ has: page.getByLabel("Opening balance", { exact: true }) });
       await f.getByLabel("Name", { exact: true }).fill("Large balance");

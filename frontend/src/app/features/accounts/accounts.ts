@@ -1,8 +1,19 @@
 import { createAccountForm, createAdjustmentForm } from './account-forms';
 import { Localization } from '../../core/i18n/localization';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { NgTemplateOutlet } from '@angular/common';
+import { containDialogFocus, openCreationDialog } from '../../shared/ui/creation-dialog';
 import { Api, Members } from '../../core/api';
 import { AccountsService } from './accounts.service';
 import type { Account, AccountInput, Movement } from './account.model';
@@ -14,7 +25,7 @@ import {
 import { Workspace } from '../../core/workspace';
 
 @Component({
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, NgTemplateOutlet],
   templateUrl: './accounts.html',
   styleUrl: './accounts.css',
 })
@@ -23,6 +34,14 @@ export class Accounts {
   protected readonly api = inject(Api);
   private readonly service = inject(AccountsService);
   private readonly workspace = inject(Workspace);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly dialog = viewChild<ElementRef<HTMLDialogElement>>('creationDialog');
+  protected readonly creating = signal(false);
+  protected readonly containFocus = containDialogFocus;
+  private opener: HTMLElement | null = null;
+  private operation = 0;
+  private pendingCreate = this.route.snapshot.queryParamMap.has('create');
   protected readonly rows = signal<Account[]>([]);
   protected readonly members = signal<Members['members']>([]);
   protected readonly selected = signal<Account | null>(null);
@@ -70,6 +89,7 @@ export class Accounts {
         this.generation++;
         this.detailGeneration++;
       });
+      untracked(() => this.cancelCreate(undefined, true));
       this.rows.set([]);
       this.members.set([]);
       this.selected.set(null);
@@ -103,6 +123,16 @@ export class Accounts {
       if (this.current(id, g)) {
         this.rows.set(rows.accounts);
         this.members.set(members.members);
+        if (this.pendingCreate) {
+          this.pendingCreate = false;
+          void this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: { create: null },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+          });
+          this.create();
+        }
       }
     } catch (e) {
       if (this.current(id, g)) {
@@ -188,6 +218,32 @@ export class Accounts {
       if (this.current(id, g) && d === this.detailGeneration) this.historyLoading.set(false);
     }
   }
+  protected create(event?: Event): void {
+    if (this.busy() || this.editing() || this.creating()) return;
+    this.opener = (event?.currentTarget as HTMLElement | null) ?? null;
+    this.error.set('');
+    this.resetForm();
+    this.creating.set(true);
+    openCreationDialog(this.dialog()?.nativeElement);
+  }
+  protected cancelCreate(event?: Event, force = false): void {
+    event?.preventDefault();
+    if (this.busy() && !force) return;
+    if (!this.creating()) return;
+    this.operation++;
+    this.busy.set(false);
+    this.creating.set(false);
+    this.dialog()?.nativeElement.close();
+    this.error.set('');
+    const opener = this.opener;
+    this.opener = null;
+    requestAnimationFrame(() => {
+      const fallback = document.querySelector<HTMLElement>(
+        '.pagehead button:not(:disabled), .pagehead h1',
+      );
+      (opener?.isConnected ? opener : fallback)?.focus();
+    });
+  }
   protected beginEdit(row: Account): void {
     if (this.busy() || this.historyLoading()) return;
     this.editing.set(true);
@@ -247,6 +303,7 @@ export class Accounts {
             }),
       (saved) => {
         this.replace(saved);
+        if (!row) this.cancelCreate(undefined, true);
         this.resetForm();
         this.selected.set(saved);
         this.success.set(row ? 'Account updated.' : 'Account created.');
@@ -308,23 +365,24 @@ export class Accounts {
     const id = this.api.selectedId();
     if (!id || this.busy()) return;
     const g = this.generation;
+    const operation = this.operation;
     this.busy.set(true);
     this.error.set('');
     this.success.set('');
     try {
       const saved = await action(id);
-      if (this.current(id, g)) {
+      if (this.current(id, g) && operation === this.operation) {
         this.busy.set(false);
         apply(saved);
         void this.workspace.load(id);
       }
     } catch (e) {
-      if (this.current(id, g)) {
+      if (this.current(id, g) && operation === this.operation) {
         const m = await this.api.handleError(e);
-        if (this.current(id, g)) this.error.set(m);
+        if (this.current(id, g) && operation === this.operation) this.error.set(m);
       }
     } finally {
-      if (this.current(id, g)) this.busy.set(false);
+      if (this.current(id, g) && operation === this.operation) this.busy.set(false);
     }
   }
 }
