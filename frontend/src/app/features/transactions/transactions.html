@@ -4,7 +4,12 @@
     <p>{{ i18n.t('Household activity') }}</p>
   </div>
   @if (api.selectedId() && active().length) {
-    <button class="btn primary" type="button" [disabled]="busy() || editing()" (click)="create()">
+    <button
+      class="btn primary"
+      type="button"
+      [disabled]="busy() || editing()"
+      (click)="create($event)"
+    >
       {{ i18n.t('Add transaction') }}
     </button>
   }
@@ -15,7 +20,7 @@
     <a class="btn" routerLink="/settings">{{ i18n.t('Go to household settings') }}</a>
   </section>
 } @else {
-  @if (error()) {
+  @if (error() && !(editing() && !selected())) {
     <div class="alert" role="alert">
       {{ i18n.t(error()) }}
     </div>
@@ -185,7 +190,7 @@
       </section>
     }
   }
-  @if (editing()) {
+  @if (editing() && selected()) {
     <section class="panel detail">
       <div class="detail-head">
         <h2 tabindex="-1">{{ i18n.t(selected() ? 'Edit transaction' : 'Add transaction') }}</h2>
@@ -234,179 +239,209 @@
           }
         </div>
       }
-      <form [formGroup]="form" (ngSubmit)="save()" class="entry-form">
-        <label
-          >{{ i18n.t('Type')
-          }}<select
-            class="field"
-            formControlName="type"
-            (change)="kindChanged()"
-            [attr.disabled]="selected() ? '' : null"
-          >
-            <option value="expense">{{ i18n.t('expense') }}</option>
-            <option value="income">{{ i18n.t('income') }}</option>
-            <option value="transfer">{{ i18n.t('transfer') }}</option>
-            <option value="refund">{{ i18n.t('refund') }}</option>
-          </select></label
-        ><label
-          >{{ i18n.t('Date')
-          }}<input class="field" type="date" formControlName="transactionDate" required
-        /></label>
-        @if (formValue().type === 'refund') {
-          <label
-            >{{ i18n.t('Purchase')
-            }}<select
-              class="field"
-              formControlName="purchaseTransactionId"
-              [attr.disabled]="selected() ? '' : null"
-            >
-              <option value="">{{ i18n.t('Choose purchase') }}</option>
-              @if (selected()?.purchaseTransactionId && !purchase()) {
-                <option [value]="selected()!.purchaseTransactionId">
-                  {{ selected()!.purchaseTransactionId }}
-                </option>
-              }
-              @for (p of purchases(); track p.id) {
-                <option [value]="p.id">
-                  {{ p.transactionDate }} · {{ label(p) }} · {{ amount(p) }}
-                </option>
-              }
-            </select></label
-          >
-          @if (inheritedPurchase(); as inherited) {
-            <p class="sub">
-              {{ i18n.t('Category') }}: {{ category(inherited.categoryId) }} ·
-              {{ i18n.t('Currency') }}: {{ inherited.currency }}
-              @if (inherited.exchangeRate) {
-                · {{ i18n.t('Exchange rate') }}: {{ inherited.exchangeRate }} ·
-                {{ inherited.exchangeRateSource }}
-              }
-            </p>
-          }
-          @if (purchaseCursor()) {
-            <button class="btn" type="button" (click)="loadPurchases(true)">
-              {{ i18n.t('Load more purchases') }}
-            </button>
-          }
-        }
-        @if (formValue().type === 'transfer') {
-          <label
-            >{{ i18n.t('From account')
-            }}<select class="field" formControlName="fromAccountId">
-              <option value="">{{ i18n.t('Choose account') }}</option>
-              @if (account(formValue().fromAccountId); as previous) {
-                @if (previous.status === 'archived') {
-                  <option [value]="previous.id" disabled>
-                    {{ previous.name }} · {{ previous.currency }} ({{ i18n.t('archived') }})
-                  </option>
-                }
-              }
-              @for (a of active(); track a.id) {
-                <option [value]="a.id">{{ a.name }} · {{ a.currency }}</option>
-              }
-            </select></label
-          ><label
-            >{{ i18n.t('To account')
-            }}<select class="field" formControlName="toAccountId">
-              <option value="">{{ i18n.t('Choose account') }}</option>
-              @if (account(formValue().toAccountId); as previous) {
-                @if (previous.status === 'archived') {
-                  <option [value]="previous.id" disabled>
-                    {{ previous.name }} · {{ previous.currency }} ({{ i18n.t('archived') }})
-                  </option>
-                }
-              }
-              @for (a of active(); track a.id) {
-                <option [value]="a.id">{{ a.name }} · {{ a.currency }}</option>
-              }
-            </select></label
-          ><label
-            >{{ i18n.t('Debit amount')
-            }}<input class="field" inputmode="decimal" formControlName="debitAmount" /></label
-          ><label
-            >{{ i18n.t('Credit amount')
-            }}<input class="field" inputmode="decimal" formControlName="creditAmount" /></label
-          ><label
-            >{{ i18n.t('Fee amount (optional)')
-            }}<input class="field" inputmode="decimal" formControlName="feeAmount"
-          /></label>
-          @if (formValue().feeAmount) {
-            <label
-              >{{ i18n.t('Fee category')
-              }}<select class="field" formControlName="feeCategoryId">
-                <option value="">{{ i18n.t('Choose category') }}</option>
-                @if (archivedCategory(formValue().feeCategoryId)) {
-                  <option [value]="formValue().feeCategoryId" disabled>
-                    {{ category(formValue().feeCategoryId) }} ({{ i18n.t('archived') }})
-                  </option>
-                }
-                @for (c of eligible('expense'); track c.id) {
-                  <option [value]="c.id">{{ c.name }}</option>
-                }
-              </select></label
-            >
-            @if (account(formValue().fromAccountId)?.currency !== 'RSD') {
-              <label
-                >{{ i18n.t('Fee exchange rate')
-                }}<input class="field" inputmode="decimal" formControlName="feeRate" /></label
-              ><label
-                >{{ i18n.t('Rate source') }}<input class="field" formControlName="feeRateSource"
-              /></label>
-            }
-          }
-        } @else {
-          <label
-            >{{ i18n.t('Account')
-            }}<select class="field" formControlName="accountId">
-              <option value="">{{ i18n.t('Choose account') }}</option>
-              @if (account(formValue().accountId); as previous) {
-                @if (previous.status === 'archived') {
-                  <option [value]="previous.id" disabled>
-                    {{ previous.name }} · {{ previous.currency }} ({{ i18n.t('archived') }})
-                  </option>
-                }
-              }
-              @for (a of active(); track a.id) {
-                <option [value]="a.id">{{ a.name }} · {{ a.currency }}</option>
-              }
-            </select></label
-          ><label
-            >{{ i18n.t('Amount')
-            }}<input class="field" inputmode="decimal" formControlName="amount"
-          /></label>
-          @if (formValue().type !== 'refund') {
-            <label
-              >{{ i18n.t('Category')
-              }}<select class="field" formControlName="categoryId">
-                <option value="">{{ i18n.t('Choose category') }}</option>
-                @if (archivedCategory(formValue().categoryId)) {
-                  <option [value]="formValue().categoryId" disabled>
-                    {{ category(formValue().categoryId) }} ({{ i18n.t('archived') }})
-                  </option>
-                }
-                @for (c of eligible(formValue().type); track c.id) {
-                  <option [value]="c.id">{{ c.name }}</option>
-                }
-              </select></label
-            >
-            @if (account(formValue().accountId)?.currency !== 'RSD') {
-              <label
-                >{{ i18n.t('Exchange rate')
-                }}<input class="field" inputmode="decimal" formControlName="exchangeRate" /></label
-              ><label
-                >{{ i18n.t('Rate source')
-                }}<input class="field" formControlName="exchangeRateSource"
-              /></label>
-            }
-          }
-        }
-        <label>{{ i18n.t('Merchant') }}<input class="field" formControlName="merchant" /></label
-        ><label
-          >{{ i18n.t('Note') }}<textarea class="field" formControlName="note"></textarea></label
-        ><button class="btn primary" type="submit" [disabled]="busy() || !!review()">
-          {{ i18n.t('Save') }}
-        </button>
-      </form>
+      <ng-container *ngTemplateOutlet="transactionForm" />
     </section>
   }
 }
+
+<dialog
+  #creationDialog
+  class="creation-dialog"
+  aria-labelledby="create-transaction-heading"
+  (cancel)="cancelCreate($event)"
+  (keydown)="containFocus($event)"
+>
+  <div class="dialogbody">
+    <div class="detail-head">
+      <h2 id="create-transaction-heading" tabindex="-1" autofocus>
+        {{ i18n.t('Add transaction') }}
+      </h2>
+      <button class="btn" type="button" [disabled]="busy()" (click)="cancelCreate()">
+        {{ i18n.t('Close') }}
+      </button>
+    </div>
+    @if (error() && editing() && !selected()) {
+      <div class="alert" role="alert">{{ i18n.t(error()) }}</div>
+    }
+    @if (editing() && !selected()) {
+      <ng-container *ngTemplateOutlet="transactionForm" />
+    }
+  </div>
+</dialog>
+<ng-template #transactionForm>
+  <form [formGroup]="form" (ngSubmit)="save()" class="entry-form">
+    <label
+      >{{ i18n.t('Type')
+      }}<select
+        class="field"
+        formControlName="type"
+        (change)="kindChanged()"
+        [attr.disabled]="selected() ? '' : null"
+      >
+        <option value="expense">{{ i18n.t('expense') }}</option>
+        <option value="income">{{ i18n.t('income') }}</option>
+        <option value="transfer">{{ i18n.t('transfer') }}</option>
+        <option value="refund">{{ i18n.t('refund') }}</option>
+      </select></label
+    ><label
+      >{{ i18n.t('Date')
+      }}<input class="field" type="date" formControlName="transactionDate" required
+    /></label>
+    @if (formValue().type === 'refund') {
+      <label
+        >{{ i18n.t('Purchase')
+        }}<select
+          class="field"
+          formControlName="purchaseTransactionId"
+          [attr.disabled]="selected() ? '' : null"
+        >
+          <option value="">{{ i18n.t('Choose purchase') }}</option>
+          @if (selected()?.purchaseTransactionId && !purchase()) {
+            <option [value]="selected()!.purchaseTransactionId">
+              {{ selected()!.purchaseTransactionId }}
+            </option>
+          }
+          @for (p of purchases(); track p.id) {
+            <option [value]="p.id">
+              {{ p.transactionDate }} · {{ label(p) }} · {{ amount(p) }}
+            </option>
+          }
+        </select></label
+      >
+      @if (inheritedPurchase(); as inherited) {
+        <p class="sub">
+          {{ i18n.t('Category') }}: {{ category(inherited.categoryId) }} · {{ i18n.t('Currency') }}:
+          {{ inherited.currency }}
+          @if (inherited.exchangeRate) {
+            · {{ i18n.t('Exchange rate') }}: {{ inherited.exchangeRate }} ·
+            {{ inherited.exchangeRateSource }}
+          }
+        </p>
+      }
+      @if (purchaseCursor()) {
+        <button class="btn" type="button" (click)="loadPurchases(true)">
+          {{ i18n.t('Load more purchases') }}
+        </button>
+      }
+    }
+    @if (formValue().type === 'transfer') {
+      <label
+        >{{ i18n.t('From account')
+        }}<select class="field" formControlName="fromAccountId">
+          <option value="">{{ i18n.t('Choose account') }}</option>
+          @if (account(formValue().fromAccountId); as previous) {
+            @if (previous.status === 'archived') {
+              <option [value]="previous.id" disabled>
+                {{ previous.name }} · {{ previous.currency }} ({{ i18n.t('archived') }})
+              </option>
+            }
+          }
+          @for (a of active(); track a.id) {
+            <option [value]="a.id">{{ a.name }} · {{ a.currency }}</option>
+          }
+        </select></label
+      ><label
+        >{{ i18n.t('To account')
+        }}<select class="field" formControlName="toAccountId">
+          <option value="">{{ i18n.t('Choose account') }}</option>
+          @if (account(formValue().toAccountId); as previous) {
+            @if (previous.status === 'archived') {
+              <option [value]="previous.id" disabled>
+                {{ previous.name }} · {{ previous.currency }} ({{ i18n.t('archived') }})
+              </option>
+            }
+          }
+          @for (a of active(); track a.id) {
+            <option [value]="a.id">{{ a.name }} · {{ a.currency }}</option>
+          }
+        </select></label
+      ><label
+        >{{ i18n.t('Debit amount')
+        }}<input class="field" inputmode="decimal" formControlName="debitAmount" /></label
+      ><label
+        >{{ i18n.t('Credit amount')
+        }}<input class="field" inputmode="decimal" formControlName="creditAmount" /></label
+      ><label
+        >{{ i18n.t('Fee amount (optional)')
+        }}<input class="field" inputmode="decimal" formControlName="feeAmount"
+      /></label>
+      @if (formValue().feeAmount) {
+        <label
+          >{{ i18n.t('Fee category')
+          }}<select class="field" formControlName="feeCategoryId">
+            <option value="">{{ i18n.t('Choose category') }}</option>
+            @if (archivedCategory(formValue().feeCategoryId)) {
+              <option [value]="formValue().feeCategoryId" disabled>
+                {{ category(formValue().feeCategoryId) }} ({{ i18n.t('archived') }})
+              </option>
+            }
+            @for (c of eligible('expense'); track c.id) {
+              <option [value]="c.id">{{ c.name }}</option>
+            }
+          </select></label
+        >
+        @if (account(formValue().fromAccountId)?.currency !== 'RSD') {
+          <label
+            >{{ i18n.t('Fee exchange rate')
+            }}<input class="field" inputmode="decimal" formControlName="feeRate" /></label
+          ><label
+            >{{ i18n.t('Rate source') }}<input class="field" formControlName="feeRateSource"
+          /></label>
+        }
+      }
+    } @else {
+      <label
+        >{{ i18n.t('Account')
+        }}<select class="field" formControlName="accountId">
+          <option value="">{{ i18n.t('Choose account') }}</option>
+          @if (account(formValue().accountId); as previous) {
+            @if (previous.status === 'archived') {
+              <option [value]="previous.id" disabled>
+                {{ previous.name }} · {{ previous.currency }} ({{ i18n.t('archived') }})
+              </option>
+            }
+          }
+          @for (a of active(); track a.id) {
+            <option [value]="a.id">{{ a.name }} · {{ a.currency }}</option>
+          }
+        </select></label
+      ><label
+        >{{ i18n.t('Amount') }}<input class="field" inputmode="decimal" formControlName="amount"
+      /></label>
+      @if (formValue().type !== 'refund') {
+        <label
+          >{{ i18n.t('Category')
+          }}<select class="field" formControlName="categoryId">
+            <option value="">{{ i18n.t('Choose category') }}</option>
+            @if (archivedCategory(formValue().categoryId)) {
+              <option [value]="formValue().categoryId" disabled>
+                {{ category(formValue().categoryId) }} ({{ i18n.t('archived') }})
+              </option>
+            }
+            @for (c of eligible(formValue().type); track c.id) {
+              <option [value]="c.id">{{ c.name }}</option>
+            }
+          </select></label
+        >
+        @if (account(formValue().accountId)?.currency !== 'RSD') {
+          <label
+            >{{ i18n.t('Exchange rate')
+            }}<input class="field" inputmode="decimal" formControlName="exchangeRate" /></label
+          ><label
+            >{{ i18n.t('Rate source') }}<input class="field" formControlName="exchangeRateSource"
+          /></label>
+        }
+      }
+    }
+    <label>{{ i18n.t('Merchant') }}<input class="field" formControlName="merchant" /></label
+    ><label>{{ i18n.t('Note') }}<textarea class="field" formControlName="note"></textarea></label
+    ><button class="btn primary" type="submit" [disabled]="busy() || !!review()">
+      {{ i18n.t(busy() ? 'Saving…' : 'Save') }}
+    </button>
+    @if (!selected()) {
+      <button class="btn" type="button" [disabled]="busy()" (click)="cancelCreate()">
+        {{ i18n.t('Cancel') }}
+      </button>
+    }
+  </form>
+</ng-template>

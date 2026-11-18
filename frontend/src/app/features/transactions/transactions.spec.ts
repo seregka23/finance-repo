@@ -1,3 +1,10 @@
+// jsdom does not implement native dialog methods.
+HTMLDialogElement.prototype.showModal ??= function () {
+  this.setAttribute('open', '');
+};
+HTMLDialogElement.prototype.close ??= function () {
+  this.removeAttribute('open');
+};
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { vi } from 'vitest';

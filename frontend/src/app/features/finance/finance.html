@@ -53,7 +53,9 @@
             <p class="sub">
               {{ i18n.t('Add an account to begin organizing your household finances.') }}
             </p>
-            <a class="btn" routerLink="/accounts">{{ i18n.t('Go to accounts') }}</a>
+            <a class="btn" routerLink="/accounts" [queryParams]="{ create: 1 }">{{
+              i18n.t('Add account')
+            }}</a>
           </section>
           <section class="panel">
             <h2>{{ i18n.t('Recent activity') }}</h2>
@@ -103,10 +105,9 @@
             }}
           </p>
         }
-        <button class="btn primary" type="button" disabled aria-describedby="account-reason">
-          {{ i18n.t('Add account') }}
-        </button>
-        <p class="hint" id="account-reason">{{ i18n.t('Account management is coming soon.') }}</p>
+        <a class="btn primary" routerLink="/accounts" [queryParams]="{ create: 1 }">{{
+          i18n.t('Add account')
+        }}</a>
       </section>
     }
     @case ('Transactions') {
@@ -226,8 +227,9 @@
         <button class="btn" disabled>{{ i18n.t('Enter manually') }}</button>
       }
       <button class="btn" disabled>
-        {{ i18n.t('Paste SMS') }}</button
-      ><button class="btn" disabled>{{ i18n.t('Upload image') }}</button>
+        {{ i18n.t('Paste SMS') }}</button><button class="btn" disabled>
+        {{ i18n.t('Upload image') }}
+      </button>
     </div>
     <p class="hint">
       {{ i18n.t('SMS and image imports are coming soon.') }}

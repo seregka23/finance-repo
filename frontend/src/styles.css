@@ -528,6 +528,12 @@ dialog {
   color: var(--ink);
   padding: 0;
 }
+dialog.creation-dialog {
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  background: #fff;
+  box-shadow: 0 16px 70px #19234130;
+}
 dialog::backdrop {
   background: #19234180;
 }

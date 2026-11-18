@@ -209,7 +209,8 @@ async function run() {
           if (name === "Accounts")
             assert.ok(
               await page
-                .getByRole("button", { name: "Create account", exact: true })
+                .locator(".pagehead")
+                .getByRole("button", { name: "Add account", exact: true })
                 .isEnabled(),
             );
           if (name === "Budgets")
@@ -515,6 +516,15 @@ async function run() {
         return response.json();
       };
       const merchant = "Browser market 100%_";
+      const creation = page.getByRole("dialog");
+      await creation.waitFor();
+      assert.notEqual(
+        await creation.evaluate((el) => getComputedStyle(el).backgroundColor),
+        "rgba(0, 0, 0, 0)",
+      );
+      assert.ok(
+        await creation.evaluate((el) => el.contains(document.activeElement)),
+      );
       await editor.waitFor();
       assert.equal(await field("Account").inputValue(), account.id);
       const today = Intl.DateTimeFormat("en-CA", {
@@ -526,7 +536,7 @@ async function run() {
       await field("Merchant").fill(merchant);
       await field("Amount").fill("1001.00");
       await submit("POST", 409);
-      await page
+      await creation
         .getByRole("alert")
         .filter({ hasText: "Insufficient funds" })
         .waitFor();
@@ -534,10 +544,15 @@ async function run() {
       assert.equal(await balance(), "100000");
       await field("Amount").fill("12.34");
       await field("Amount").press("Tab");
-      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      assert.ok(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
       await axe(page, "320px expense form");
       const created = await submit("POST", 201);
       assert.equal(created.amountMinor, "1234");
+      await creation.waitFor({ state: "hidden" });
       await page.getByRole("button", { name: merchant, exact: true }).waitFor();
       assert.equal(await balance(), "98766");
 
@@ -658,10 +673,20 @@ async function run() {
         .selectOption(selected);
       const editor = page.locator(".entry-form");
       const field = (name) => editor.getByLabel(name);
+      const opener = page.getByRole("button", {
+        name: "Add transaction",
+        exact: true,
+      });
+      const dialog = page.getByRole("dialog");
+      await opener.focus();
+      await page.keyboard.press("Enter");
+      await dialog.waitFor();
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
+      assert.ok(await opener.evaluate((el) => el === document.activeElement));
       async function start(type) {
-        await page
-          .getByRole("button", { name: "Add transaction", exact: true })
-          .click();
+        await opener.click();
+        await dialog.waitFor();
         await field("Type").selectOption(type);
       }
       async function save(merchant) {
