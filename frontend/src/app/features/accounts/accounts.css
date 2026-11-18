@@ -76,20 +76,3 @@ form label {
     text-align: right;
   }
 }
-dialog {
-  width: min(540px, calc(100% - 24px));
-  max-height: calc(100dvh - 24px);
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  color: var(--ink);
-  background: var(--white);
-  overflow-y: auto;
-  box-shadow: 0 16px 70px #19234130;
-}
-dialog::backdrop {
-  background: #19234180;
-}
-.dialogbody {
-  padding: 21px;
-}

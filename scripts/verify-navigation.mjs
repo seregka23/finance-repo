@@ -518,6 +518,10 @@ async function run() {
       const merchant = "Browser market 100%_";
       const creation = page.getByRole("dialog");
       await creation.waitFor();
+      assert.notEqual(
+        await creation.evaluate((el) => getComputedStyle(el).backgroundColor),
+        "rgba(0, 0, 0, 0)",
+      );
       assert.ok(
         await creation.evaluate((el) => el.contains(document.activeElement)),
       );

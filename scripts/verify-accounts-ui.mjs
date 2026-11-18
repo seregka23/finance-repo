@@ -139,6 +139,10 @@ try {
           .click();
         await dialog.waitFor();
         assert.equal(new URL(page.url()).pathname, "/accounts");
+        assert.notEqual(
+          await dialog.evaluate((el) => getComputedStyle(el).backgroundColor),
+          "rgba(0, 0, 0, 0)",
+        );
         assert.equal(
           await form.getByLabel("Name", { exact: true }).inputValue(),
           "",
