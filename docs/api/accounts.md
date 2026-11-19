@@ -56,6 +56,8 @@ Other metadata remains editable. Archived accounts retain balances/history;
 restore them before financial or metadata changes. `status=active` is the source
 for future manual-entry account selectors, and the transaction engine rejects
 archived accounts independently. Advanced manual entry remains issue #13.
+An account with a nonzero reserve balance cannot be archived. Release reserved
+funds first. See the [reserve API](reserves.md).
 
 Errors use the standard envelope: 400 INVALID_INPUT; 404 HOUSEHOLD_NOT_FOUND or
 ACCOUNT_NOT_FOUND; 409 VERSION_CONFLICT, OWNER_NOT_ELIGIBLE, CURRENCY_LOCKED,

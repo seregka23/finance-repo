@@ -338,3 +338,11 @@ model RefundDetails {
   @@unique([householdId, purchaseTransactionId, allocationSequence])
   @@map("refund_details")
 }
+
+// Marker for new expense funding histories; historical linked rows stay unmanaged.
+model ReserveFundingManaged {
+  transactionId String @id @map("transaction_id")
+  householdId String @map("household_id")
+  @@unique([householdId, transactionId])
+  @@map("reserve_funding_managed")
+}

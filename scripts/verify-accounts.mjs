@@ -374,6 +374,48 @@ async function verify() {
     });
   const history = (a, query = "", user = owner) =>
     api(`${basePath}/${a.id}/movements${query}`, user);
+  const reservePath = `/api/v1/households/${h}/reserves`;
+  const transactionPath = `/api/v1/households/${h}/transactions`;
+  const createReserve = (account, name = "Utilities", status = 201) =>
+    api(reservePath, owner, {
+      method: "POST",
+      body: { accountId: account.id, name },
+      status,
+    });
+  const reserve = (r, user = owner) => api(`${reservePath}/${r.id}`, user);
+  const reserveHistory = async (r) =>
+    (await api(`${reservePath}/${r.id}/movements`, owner)).movements;
+  const moveReserve = (r, type, amountMinor, status = 201) =>
+    api(`${reservePath}/${r.id}/movements`, owner, {
+      method: "POST",
+      body: { type, amountMinor },
+      status,
+    });
+  const fundedExpense = (a, r, amountMinor, reservedMinor) => ({
+    type: "expense",
+    transactionDate: "2026-02-02",
+    accountId: a.id,
+    categoryId: category.id,
+    amountMinor,
+    currency: a.currency,
+    merchant: null,
+    note: null,
+    exchangeRate: null,
+    exchangeRateSource: null,
+    reserveFunding: { reserveId: r.id, amountMinor: reservedMinor },
+  });
+  const postTransaction = (body, status = 201, key = randomUUID()) =>
+    api(transactionPath, owner, { method: "POST", body, status, key });
+  const voidTransaction = (t, status = 200) =>
+    api(`${transactionPath}/${t.id}/void`, owner, {
+      method: "POST",
+      body: { version: t.version },
+      status,
+    });
+  async function assertBalances(a, expected) {
+    const { balanceMinor, reservedMinor, availableMinor } = await get(a);
+    assert.deepEqual([balanceMinor, reservedMinor, availableMinor], expected);
+  }
   const postExpense = (a, amountMinor = "1000", status = 201) =>
     api(`/api/v1/households/${h}/transactions`, owner, {
       method: "POST",
@@ -750,6 +792,204 @@ async function verify() {
         assert.equal(locked.currencyLocked, true);
         await update(locked, { currency: "EUR" }, 409);
       }
+    },
+  );
+  await check(
+    "reserve funding posts one expense and preserves available funds",
+    async () => {
+      const a = await create(input("Reserve example", "5000000"));
+      const r = await createReserve(a);
+      assert.equal(r.currency, "RSD");
+      assert.equal(r.accountId, a.id);
+      assert.equal((await reserve(r, member)).balanceMinor, "0");
+      await api(`${reservePath}/${r.id}`, stranger, { status: 404 });
+      await moveReserve(r, "allocation", "1500000");
+      await assertBalances(a, ["5000000", "1500000", "3500000"]);
+      await setStatus(await get(a), "archive", 409);
+      const body = fundedExpense(a, r, "1200000", "1200000");
+      const key = randomUUID();
+      const t = await postTransaction(body, 201, key);
+      assert.deepEqual(t.reserveFunding, body.reserveFunding);
+      assert.deepEqual(await postTransaction(body, 201, key), t);
+      const conflict = await postTransaction(
+        fundedExpense(a, r, "1200000", "1100000"),
+        409,
+        key,
+      );
+      assert.equal(conflict.error.code, "IDEMPOTENCY_CONFLICT");
+      await assertBalances(a, ["3800000", "300000", "3500000"]);
+      assert.equal((await reserve(r)).balanceMinor, "300000");
+      const list = await api(`${transactionPath}?accountId=${a.id}`, owner);
+      assert.deepEqual(
+        list.transactions.map((row) => row.id),
+        [t.id],
+      );
+      assert.deepEqual(
+        list.transactions[0].reserveFunding,
+        body.reserveFunding,
+      );
+      assert.deepEqual(
+        (await reserveHistory(r))
+          .map(({ type, amountMinor }) => [type, amountMinor])
+          .sort(),
+        [
+          ["allocation", "1500000"],
+          ["spend", "-1200000"],
+        ],
+      );
+      await voidTransaction(t);
+      await assertBalances(a, ["5000000", "1500000", "3500000"]);
+      assert.equal(
+        (await reserveHistory(r)).filter(
+          (m) => m.type === "reversal" && m.transactionId === t.id,
+        ).length,
+        1,
+      );
+      assert.deepEqual(await postTransaction(body, 201, key), t);
+    },
+  );
+  await check(
+    "competing allocations and funded expenses use current reserves",
+    async () => {
+      const a = await create(input("Reserve race", "2000000"));
+      const r = await createReserve(a, "Race");
+      const s = await createReserve(a, "Other reserve");
+      await moveReserve(r, "allocation", "1000000");
+      const results = await Promise.all(
+        [1, 2].map(() =>
+          fetch(base + transactionPath, {
+            method: "POST",
+            headers: {
+              Origin: appOrigin,
+              Cookie: `finance_session=${owner}`,
+              "Content-Type": "application/json",
+              "Idempotency-Key": randomUUID(),
+            },
+            body: JSON.stringify(fundedExpense(a, r, "800000", "800000")),
+          }),
+        ),
+      );
+      assert.deepEqual(
+        results.map((response) => response.status).sort(),
+        [201, 409],
+      );
+      const rejected = await results
+        .find((response) => response.status === 409)
+        .json();
+      assert.equal(rejected.error.code, "RESERVE_INSUFFICIENT_FUNDS");
+      assert.equal(rejected.error.availableReserveMinor, "200000");
+      await assertBalances(a, ["1200000", "200000", "1000000"]);
+      assert.equal(
+        (await reserveHistory(r)).filter((m) => m.type === "spend").length,
+        1,
+      );
+      await moveReserve(s, "allocation", "1000000");
+      await moveReserve(r, "allocation", "1", 409);
+      await moveReserve(r, "release", "200001", 409);
+      await assertBalances(a, ["1200000", "1200000", "0"]);
+      await moveReserve(r, "release", "200000");
+      await assertBalances(a, ["1200000", "1000000", "200000"]);
+      await postTransaction(fundedExpense(a, s, "1000001", "700000"), 409);
+      const unrelated = await create(input("Wrong account", "1000000"));
+      await postTransaction(fundedExpense(unrelated, s, "1", "1"), 409);
+      await assertBalances(a, ["1200000", "1000000", "200000"]);
+      const a2 = await create(input("Allocation race", "100"));
+      const r2 = await createReserve(a2, "First");
+      const r3 = await createReserve(a2, "Second");
+      const allocations = await Promise.all(
+        [r2, r3].map((r) =>
+          fetch(`${base}${reservePath}/${r.id}/movements`, {
+            method: "POST",
+            headers: {
+              Origin: appOrigin,
+              Cookie: `finance_session=${owner}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ type: "allocation", amountMinor: "80" }),
+          }),
+        ),
+      );
+      assert.deepEqual(
+        allocations.map((response) => response.status).sort(),
+        [201, 409],
+      );
+      await assertBalances(a2, ["100", "80", "20"]);
+    },
+  );
+  await check(
+    "partial funding, edits and refunds preserve both ledgers",
+    async () => {
+      const a = await create(input("Reserve change", "200000"));
+      const r = await createReserve(a);
+      await moveReserve(r, "allocation", "80000");
+      const body = fundedExpense(a, r, "60000", "20000");
+      const t = await postTransaction(body);
+      await assertBalances(a, ["140000", "60000", "80000"]);
+      const updated = await api(`${transactionPath}/${t.id}`, owner, {
+        method: "PATCH",
+        body: {
+          ...body,
+          version: t.version,
+          reserveFunding: { reserveId: r.id, amountMinor: "30000" },
+        },
+      });
+      assert.equal(updated.reserveFunding.amountMinor, "30000");
+      await assertBalances(a, ["140000", "50000", "90000"]);
+      const [audit] = await query(
+        `SELECT details_json FROM audit_events WHERE household_id=${quote(h)} AND transaction_id=${quote(t.id)} AND action='transaction.edited'`,
+      );
+      const { before, after } = JSON.parse(audit.details_json);
+      assert.deepEqual(before.reserveFunding, body.reserveFunding);
+      assert.deepEqual(after.reserveFunding, updated.reserveFunding);
+      await api(`${transactionPath}/${t.id}`, owner, {
+        method: "PATCH",
+        body: { ...body, version: t.version },
+        status: 409,
+      });
+      await assertBalances(a, ["140000", "50000", "90000"]);
+      const refund = await postTransaction({
+        type: "refund",
+        transactionDate: "2026-03-01",
+        purchaseTransactionId: t.id,
+        accountId: a.id,
+        amountMinor: "10000",
+      });
+      await assertBalances(a, ["150000", "50000", "100000"]);
+      await voidTransaction(
+        await api(`${transactionPath}/${t.id}`, owner),
+        409,
+      );
+      await voidTransaction(refund);
+      await voidTransaction(await api(`${transactionPath}/${t.id}`, owner));
+      await assertBalances(a, ["200000", "80000", "120000"]);
+      assert.equal((await reserve(r)).balanceMinor, "80000");
+    },
+  );
+  await check(
+    "a suppressed reserve write rolls back its entire posting",
+    async () => {
+      const a = await create(input("Reserve write rollback", "10000"));
+      const r = await createReserve(a);
+      await moveReserve(r, "allocation", "8000");
+      const body = fundedExpense(a, r, "6500", "4500");
+      const key = randomUUID();
+      await query(
+        "CREATE TRIGGER ignore_fixture_reserve_spend BEFORE INSERT ON reserve_movements WHEN NEW.type='spend' BEGIN SELECT RAISE(IGNORE); END",
+      );
+      try {
+        await postTransaction(body, 503, key);
+        await assertBalances(a, ["10000", "8000", "2000"]);
+        assert.deepEqual(
+          (await api(`${transactionPath}?accountId=${a.id}`, owner))
+            .transactions,
+          [],
+        );
+        assert.equal((await reserveHistory(r)).length, 1);
+      } finally {
+        await query("DROP TRIGGER ignore_fixture_reserve_spend");
+      }
+      await postTransaction(body, 201, key);
+      await assertBalances(a, ["3500", "3500", "0"]);
     },
   );
   await check(

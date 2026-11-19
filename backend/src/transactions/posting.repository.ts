@@ -1,10 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { HttpException, Inject, Injectable } from '@nestjs/common';
 import { apiError, unavailable, type Identity } from '../auth/auth.js';
 import { DATABASE } from '../health.controller.js';
 import type { Database } from '../households/households.js';
 import { recordConversion } from '../finance/fx.js';
 import type {
   PostingInput,
+  ReserveFunding,
   TransactionRecord,
   TransferInput,
   TransferRecord,
@@ -75,6 +76,38 @@ function translate(e: unknown): never {
       'Account balance would be invalid',
     ],
   ];
+  errors.push(
+    [
+      'reserve_account_ineligible',
+      409,
+      'ACCOUNT_NOT_ELIGIBLE',
+      'Account is not eligible',
+    ],
+    [
+      'reserve_ineligible',
+      409,
+      'RESERVE_NOT_ELIGIBLE',
+      'Reserve is not eligible',
+    ],
+    [
+      'reserve_funding_legacy_or_invalid',
+      409,
+      'TRANSACTION_LINKED',
+      'Transaction has related records and cannot be changed',
+    ],
+    [
+      'reserve_funding_invalid',
+      409,
+      'RESERVE_NOT_ELIGIBLE',
+      'Reserve funding is not eligible',
+    ],
+    [
+      'reserve_balance_invalid',
+      409,
+      'INSUFFICIENT_FUNDS',
+      'Account balance would be invalid',
+    ],
+  );
   const transferErrors: [string, number, string, string][] = [
     [
       'transfer_member_ineligible',
@@ -287,6 +320,177 @@ export class PostingRepository {
       return translate(e);
     }
   }
+  private reserveMovement(
+    h: string,
+    id: string,
+    account: string,
+    transaction: string,
+    type: 'spend' | 'reversal',
+    amount: string,
+    date: string,
+    now: string,
+    gate = '1',
+  ): D1PreparedStatement[] {
+    const movement = crypto.randomUUID();
+    return [
+      this.stmt(
+        `INSERT INTO reserve_checks(household_id,reserve_id,account_id,transaction_id,operation,amount_minor) SELECT ?,?,?,?,?,CAST(? AS INTEGER) WHERE ${gate}`,
+        h,
+        id,
+        account,
+        transaction,
+        type,
+        amount,
+      ),
+      this.stmt(
+        `INSERT INTO reserve_movements(id,household_id,reserve_id,account_id,transaction_id,type,movement_date,amount_minor,created_at) SELECT ?,?,?,?,?,?,?,CAST(? AS INTEGER),? WHERE ${gate}`,
+        movement,
+        h,
+        id,
+        account,
+        transaction,
+        type,
+        date,
+        (type === 'spend' ? -BigInt(amount) : BigInt(amount)).toString(),
+        now,
+      ),
+      this.stmt(
+        `INSERT INTO posting_write_checks(changed) SELECT changes() WHERE ${gate}`,
+      ),
+      this.stmt(
+        `INSERT INTO reserve_movement_result_checks(id,household_id,reserve_id,account_id,transaction_id,operation,amount_minor) SELECT ?,?,?,?,?,?,CAST(? AS INTEGER) WHERE ${gate}`,
+        movement,
+        h,
+        id,
+        account,
+        transaction,
+        type,
+        amount,
+      ),
+    ];
+  }
+  private fundingResult(
+    h: string,
+    id: string,
+    funding: ReserveFunding | null | undefined,
+    account: string | null,
+    gate = '1',
+  ) {
+    return this.stmt(
+      `INSERT INTO reserve_funding_result_checks(household_id,transaction_id,reserve_id,account_id,amount_minor) SELECT ?,?,?,?,CAST(? AS INTEGER) WHERE ${gate}`,
+      h,
+      id,
+      funding?.reserveId ?? null,
+      funding ? account : null,
+      funding?.amountMinor ?? '0',
+    );
+  }
+  private async runFunding(
+    stmts: D1PreparedStatement[],
+    identity: Identity,
+    householdId: string,
+    funding: ReserveFunding | null | undefined,
+    old: (ReserveFunding & { accountId: string }) | null = null,
+    id?: string,
+    version?: number,
+  ): Promise<D1Result[]> {
+    try {
+      return await this.db.batch(stmts);
+    } catch (e) {
+      if (
+        id &&
+        version !== undefined &&
+        String(e).includes('posting_result_invalid')
+      ) {
+        const scoped = await this.prisma.transaction.findFirst({
+          where: {
+            id,
+            householdId,
+            version: BigInt(version),
+            status: 'posted',
+            household: {
+              status: 'active',
+              members: {
+                some: { identitySubject: identity.subject, status: 'active' },
+              },
+            },
+          },
+          select: { id: true },
+        });
+        if (!scoped)
+          throw apiError(
+            409,
+            'VERSION_CONFLICT',
+            'Transaction was changed, is unavailable, or cannot be edited',
+          );
+      }
+      if (String(e).includes('reserve_balance_invalid') && funding) {
+        // Reauthorize and read after rollback; do not disclose balances after access is revoked.
+        const household = await this.prisma.household.findFirst({
+          where: {
+            id: householdId,
+            status: 'active',
+            members: {
+              some: { identitySubject: identity.subject, status: 'active' },
+            },
+          },
+          select: { id: true },
+        });
+        if (!household)
+          throw apiError(404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
+        if (id && version !== undefined) {
+          const current = await this.prisma.transaction.findFirst({
+            where: {
+              id,
+              householdId,
+              version: BigInt(version),
+              status: 'posted',
+              household: {
+                status: 'active',
+                members: {
+                  some: { identitySubject: identity.subject, status: 'active' },
+                },
+              },
+            },
+            select: { id: true },
+          });
+          if (!current)
+            throw apiError(
+              409,
+              'VERSION_CONFLICT',
+              'Transaction was changed, is unavailable, or cannot be edited',
+            );
+        }
+        const reserve = await this.prisma.reserve.findFirst({
+          where: { id: funding.reserveId, householdId },
+        });
+        if (!reserve)
+          throw apiError(
+            409,
+            'RESERVE_NOT_ELIGIBLE',
+            'Reserve is not eligible',
+          );
+        const sum = await this.prisma.reserveMovement.aggregate({
+          where: { householdId, reserveId: funding.reserveId },
+          _sum: { amountMinor: true },
+        });
+        const available =
+          (sum._sum.amountMinor ?? 0n) +
+          (old?.reserveId === funding.reserveId ? BigInt(old.amountMinor) : 0n);
+        throw new HttpException(
+          {
+            error: {
+              code: 'RESERVE_INSUFFICIENT_FUNDS',
+              message: 'Reserve balance is insufficient',
+              availableReserveMinor: available.toString(),
+            },
+          },
+          409,
+        );
+      }
+      return translate(e);
+    }
+  }
   async post(
     identity: Identity,
     householdId: string,
@@ -364,7 +568,7 @@ export class PostingRepository {
         input.currency,
         input.categoryId,
         input.type,
-        signed.toString(),
+        input.reserveFunding ? '0' : signed.toString(),
         'post',
       ),
       this.stmt(
@@ -381,6 +585,44 @@ export class PostingRepository {
         now,
         now,
       ),
+      ...(input.reserveFunding
+        ? [
+            this.stmt(
+              `INSERT INTO reserve_funding_managed(transaction_id,household_id) SELECT ?,? WHERE ${gate}`,
+              id,
+              householdId,
+            ),
+            this.stmt(
+              `INSERT INTO posting_write_checks(changed) SELECT changes() WHERE ${gate}`,
+            ),
+            ...this.reserveMovement(
+              householdId,
+              input.reserveFunding.reserveId,
+              input.accountId,
+              id,
+              'spend',
+              input.reserveFunding.amountMinor,
+              input.transactionDate,
+              now,
+              gate,
+            ),
+          ]
+        : []),
+      ...(input.reserveFunding
+        ? [
+            this.stmt(
+              `INSERT INTO posting_checks(household_id,transaction_id,account_id,currency,category_id,type,amount_minor,operation) SELECT ?,?,?,?,?,?,?,? WHERE ${gate}`,
+              householdId,
+              id,
+              input.accountId,
+              input.currency,
+              input.categoryId,
+              input.type,
+              signed.toString(),
+              'post',
+            ),
+          ]
+        : []),
       this.stmt(
         `INSERT INTO posting_details(transaction_id,household_id,account_id,amount_minor,currency,rsd_equivalent_minor,exchange_rate,exchange_rate_source) SELECT ?,?,?,CAST(? AS INTEGER),?,CAST(? AS INTEGER),?,? WHERE ${gate}`,
         id,
@@ -428,7 +670,8 @@ export class PostingRepository {
         now,
       ),
       this.stmt(
-        `UPDATE posting_requests SET response_json=(SELECT ${recordJson} FROM transactions t JOIN posting_details d ON d.transaction_id=t.id AND d.household_id=t.household_id WHERE t.id=?) WHERE id=?`,
+        `UPDATE posting_requests SET response_json=(SELECT ${input.reserveFunding ? `json_set(${recordJson},'$.reserveFunding',json(?))` : recordJson} FROM transactions t JOIN posting_details d ON d.transaction_id=t.id AND d.household_id=t.household_id WHERE t.id=?) WHERE id=?`,
+        ...(input.reserveFunding ? [JSON.stringify(input.reserveFunding)] : []),
         id,
         claim,
       ),
@@ -446,6 +689,17 @@ export class PostingRepository {
         auditId,
         claim,
       ),
+      ...(input.reserveFunding
+        ? [
+            this.fundingResult(
+              householdId,
+              id,
+              input.reserveFunding,
+              input.accountId,
+              gate,
+            ),
+          ]
+        : []),
       this.stmt(
         `INSERT INTO posting_replay_checks(household_id,member_id,request_key) VALUES(?,${member},?)`,
         householdId,
@@ -461,7 +715,12 @@ export class PostingRepository {
         requestKey,
       ),
     ];
-    const rows = await this.batch(stmts);
+    const rows = await this.runFunding(
+      stmts,
+      identity,
+      householdId,
+      input.reserveFunding,
+    );
     const row = rows.at(-1)?.results?.[0] as
       { responseJson: string } | undefined;
     if (!row?.responseJson) throw unavailable();
@@ -526,6 +785,41 @@ export class PostingRepository {
     version: number,
     input: PostingInput | null,
   ): Promise<TransactionRecord> {
+    const current = await this.get(identity, householdId, id);
+    if (current.type !== 'expense' && current.type !== 'income')
+      throw apiError(
+        409,
+        'VERSION_CONFLICT',
+        'Transaction was changed, is unavailable, or cannot be edited',
+      );
+    if (current.type === 'income' && input?.reserveFunding)
+      throw apiError(
+        409,
+        'RESERVE_FUNDING_NOT_ELIGIBLE',
+        'Convert the income to an expense before adding reserve funding',
+      );
+    const markerRows = await this.prisma.$queryRaw<{ transactionId: string }[]>(
+      Prisma.sql`SELECT transaction_id AS transactionId FROM reserve_funding_managed WHERE household_id=${householdId} AND transaction_id=${id}`,
+    );
+    const marker = markerRows[0];
+    const grouped = marker
+      ? await this.prisma.reserveMovement.groupBy({
+          by: ['reserveId', 'accountId'],
+          where: { householdId, transactionId: id },
+          _sum: { amountMinor: true },
+        })
+      : [];
+    const active = grouped.filter((g) => (g._sum.amountMinor ?? 0n) < 0n);
+    if (active.length > 1) throw unavailable();
+    const old = active[0]
+      ? {
+          reserveId: active[0].reserveId,
+          accountId: active[0].accountId,
+          amountMinor: (-active[0]._sum.amountMinor!).toString(),
+        }
+      : null;
+    const funding = input?.reserveFunding ?? null;
+    const managed = Boolean(marker || funding);
     const now = new Date().toISOString(),
       member = this.member();
     const signed = input
@@ -548,8 +842,78 @@ export class PostingRepository {
     const auditId = crypto.randomUUID();
     const stmts = [
       this.access(identity, householdId),
+      // Assert the scoped snapshot before any compensation or enrollment.
       this.stmt(
-        'INSERT INTO posting_checks(household_id,transaction_id,version,account_id,currency,category_id,type,amount_minor,operation) VALUES(?,?,?,?,?,?,?,?,?)',
+        `INSERT INTO posting_write_checks(changed) SELECT count(*) FROM transactions t JOIN posting_details d ON d.household_id=t.household_id AND d.transaction_id=t.id WHERE t.household_id=? AND t.id=? AND t.status='posted' AND t.version=? AND t.type IN ('expense','income') AND d.account_id=? AND (EXISTS(SELECT 1 FROM reserve_funding_managed f WHERE f.household_id=t.household_id AND f.transaction_id=t.id))=? AND (?=0 OR ((SELECT COALESCE(SUM(amount_minor),0) FROM reserve_movements m WHERE m.household_id=t.household_id AND m.transaction_id=t.id)=CAST(? AS INTEGER) AND (SELECT COALESCE(SUM(amount_minor),0) FROM reserve_movements m WHERE m.household_id=t.household_id AND m.transaction_id=t.id AND m.reserve_id IS ? AND m.account_id IS ?)=CAST(? AS INTEGER)))`,
+        householdId,
+        id,
+        version,
+        current.accountId,
+        marker ? 1 : 0,
+        marker ? 1 : 0,
+        old ? (-BigInt(old.amountMinor)).toString() : '0',
+        old?.reserveId ?? null,
+        old?.accountId ?? null,
+        old ? (-BigInt(old.amountMinor)).toString() : '0',
+      ),
+      this.stmt(
+        `INSERT INTO audit_events(id,household_id,actor_member_id,action,transaction_id,details_json,created_at) SELECT ?,?,${member},?,?,json_object('before',json(${old ? `json_set(${recordJson},'$.reserveFunding',json(?))` : recordJson})),? FROM transactions t JOIN posting_details d ON d.transaction_id=t.id AND d.household_id=t.household_id WHERE t.household_id=? AND t.id=?`,
+        auditId,
+        householdId,
+        householdId,
+        identity.subject,
+        input ? 'transaction.edited' : 'transaction.voided',
+        id,
+        ...(old
+          ? [
+              JSON.stringify({
+                reserveId: old.reserveId,
+                amountMinor: old.amountMinor,
+              }),
+            ]
+          : []),
+        now,
+        householdId,
+        id,
+      ),
+      ...(!marker && funding
+        ? [
+            this.stmt(
+              'INSERT INTO reserve_funding_managed(transaction_id,household_id) VALUES(?,?)',
+              id,
+              householdId,
+            ),
+            this.stmt(
+              'INSERT INTO posting_write_checks(changed) VALUES(changes())',
+            ),
+          ]
+        : []),
+      ...(old
+        ? this.reserveMovement(
+            householdId,
+            old.reserveId,
+            old.accountId,
+            id,
+            'reversal',
+            old.amountMinor,
+            current.transactionDate,
+            now,
+          )
+        : []),
+      ...(funding && input
+        ? this.reserveMovement(
+            householdId,
+            funding.reserveId,
+            input.accountId,
+            id,
+            'spend',
+            funding.amountMinor,
+            input.transactionDate,
+            now,
+          )
+        : []),
+      this.stmt(
+        'INSERT INTO posting_checks(household_id,transaction_id,version,account_id,currency,category_id,type,amount_minor,operation,reserve_adjusted) VALUES(?,?,?,?,?,?,?,?,?,?)',
         householdId,
         id,
         version,
@@ -559,18 +923,7 @@ export class PostingRepository {
         input?.type ?? null,
         signed.toString(),
         input ? 'edit' : 'void',
-      ),
-      this.stmt(
-        `INSERT INTO audit_events(id,household_id,actor_member_id,action,transaction_id,details_json,created_at) SELECT ?,?,${member},?,?,json_object('before',json(${recordJson})),? FROM transactions t JOIN posting_details d ON d.transaction_id=t.id AND d.household_id=t.household_id WHERE t.household_id=? AND t.id=?`,
-        auditId,
-        householdId,
-        householdId,
-        identity.subject,
-        input ? 'transaction.edited' : 'transaction.voided',
-        id,
-        now,
-        householdId,
-        id,
+        managed ? 1 : null,
       ),
       this.stmt(
         'DELETE FROM account_movements WHERE household_id=? AND transaction_id=?',
@@ -638,7 +991,8 @@ export class PostingRepository {
       );
     stmts.push(
       this.stmt(
-        `UPDATE audit_events SET details_json=json_set(details_json,'$.after',json((SELECT ${recordJson} FROM transactions t JOIN posting_details d ON d.transaction_id=t.id AND d.household_id=t.household_id WHERE t.household_id=? AND t.id=?))) WHERE id=?`,
+        `UPDATE audit_events SET details_json=json_set(details_json,'$.after',json((SELECT ${funding ? `json_set(${recordJson},'$.reserveFunding',json(?))` : recordJson} FROM transactions t JOIN posting_details d ON d.transaction_id=t.id AND d.household_id=t.household_id WHERE t.household_id=? AND t.id=?))) WHERE id=?`,
+        ...(funding ? [JSON.stringify(funding)] : []),
         householdId,
         id,
         auditId,
@@ -656,14 +1010,70 @@ export class PostingRepository {
         positiveRsd,
         auditId,
       ),
+      ...(managed
+        ? [
+            this.fundingResult(
+              householdId,
+              id,
+              funding,
+              input?.accountId ?? null,
+            ),
+          ]
+        : []),
       this.stmt(
         `${recordSelect} WHERE t.household_id=? AND t.id=?`,
         householdId,
         id,
       ),
     );
-    const result = await this.batch(stmts);
-    return result.at(-1)?.results?.[0] as unknown as TransactionRecord;
+    const result = await this.runFunding(
+      stmts,
+      identity,
+      householdId,
+      funding,
+      old,
+      id,
+      version,
+    );
+    const row = result.at(-1)?.results?.[0] as unknown as TransactionRecord;
+    return funding ? { ...row, reserveFunding: funding } : row;
+  }
+  private async withFunding(
+    identity: Identity,
+    householdId: string,
+    records: AnyTransactionRecord[],
+  ): Promise<AnyTransactionRecord[]> {
+    const expenses = records.filter(
+      (r) => r.type === 'expense' && r.status === 'posted',
+    );
+    if (!expenses.length) return records;
+    const groups: {
+      transactionId: string;
+      reserveId: string;
+      amountMinor: string;
+    }[] = [];
+    for (let offset = 0; offset < expenses.length; offset += 32) {
+      const ids = expenses.slice(offset, offset + 32).map((r) => r.id);
+      groups.push(
+        ...(await this.prisma.$queryRaw<
+          { transactionId: string; reserveId: string; amountMinor: string }[]
+        >(
+          Prisma.sql`SELECT m.transaction_id AS transactionId,m.reserve_id AS reserveId,CAST(-SUM(m.amount_minor) AS TEXT) AS amountMinor FROM reserve_movements m JOIN reserve_funding_managed f ON f.household_id=m.household_id AND f.transaction_id=m.transaction_id WHERE m.household_id=${householdId} AND EXISTS(SELECT 1 FROM households h JOIN household_members hm ON hm.household_id=h.id WHERE h.id=m.household_id AND h.status='active' AND hm.identity_subject=${identity.subject} AND hm.status='active') AND m.transaction_id IN (${Prisma.join(ids)}) GROUP BY m.transaction_id,m.reserve_id,m.account_id HAVING SUM(m.amount_minor)<0`,
+        )),
+      );
+    }
+    return records.map((r) => {
+      const g = groups.find((x) => x.transactionId === r.id);
+      return g && r.type === 'expense' && r.status === 'posted'
+        ? {
+            ...r,
+            reserveFunding: {
+              reserveId: g.reserveId,
+              amountMinor: g.amountMinor,
+            },
+          }
+        : r;
+    });
   }
   private scope(identity: Identity, householdId: string) {
     return {
@@ -688,7 +1098,7 @@ export class PostingRepository {
       });
       if (!row)
         throw apiError(404, 'TRANSACTION_NOT_FOUND', 'Transaction not found');
-      return mapRow(row);
+      return (await this.withFunding(identity, householdId, [mapRow(row)]))[0];
     } catch (e) {
       if (e instanceof Error && 'getStatus' in e) throw e;
       throw unavailable();
@@ -825,7 +1235,11 @@ export class PostingRepository {
       } else {
         rows = await readPage({ AND: conditions });
       }
-      const transactions = rows.slice(0, options.limit).map(mapRow),
+      const transactions = await this.withFunding(
+          identity,
+          householdId,
+          rows.slice(0, options.limit).map(mapRow),
+        ),
         last = transactions.at(-1);
       const nextCursor =
         rows.length > options.limit && last
