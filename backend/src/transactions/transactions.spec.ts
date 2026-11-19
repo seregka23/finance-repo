@@ -66,6 +66,48 @@ describe('transaction validation', () => {
     void service.create(identity, 'h', minimal, 'key');
     expect(repo.post).toHaveBeenLastCalledWith(identity, 'h', base, 'key');
   });
+  it('validates reserve funding and keeps null equivalent to omission', () => {
+    const { service, repo } = setup();
+    void service.create(
+      identity,
+      'h',
+      { ...base, reserveFunding: null },
+      'key',
+    );
+    expect(repo.post).toHaveBeenLastCalledWith(identity, 'h', base, 'key');
+    const funding = { reserveId: 'reserve', amountMinor: '123' };
+    void service.create(
+      identity,
+      'h',
+      { ...base, reserveFunding: funding },
+      'key',
+    );
+    expect(repo.post).toHaveBeenLastCalledWith(
+      identity,
+      'h',
+      { ...base, reserveFunding: funding },
+      'key',
+    );
+    for (const reserveFunding of [
+      { reserveId: 'reserve', amountMinor: '0' },
+      { reserveId: 'reserve', amountMinor: '01' },
+      { reserveId: 'reserve', amountMinor: '124' },
+      { reserveId: 'reserve', amountMinor: '1', extra: true },
+      { reserveId: '', amountMinor: '1' },
+    ]) {
+      expect(() =>
+        service.create(identity, 'h', { ...base, reserveFunding }, 'key'),
+      ).toThrow();
+    }
+    expect(() =>
+      service.create(
+        identity,
+        'h',
+        { ...base, type: 'income', reserveFunding: funding },
+        'key',
+      ),
+    ).toThrow();
+  });
   it.each([
     { transactionDate: '2023-02-29' },
     { amountMinor: '0' },

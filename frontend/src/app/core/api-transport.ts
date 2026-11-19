@@ -5,6 +5,7 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public status: number,
+    public availableReserveMinor?: string,
   ) {
     super(message);
   }
@@ -32,13 +33,16 @@ export class ApiTransport {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!response.ok) {
-      const data: { error?: { code?: string; message?: string } } = await response
-        .json()
-        .catch(() => ({}));
+      const data: { error?: { code?: string; message?: string; availableReserveMinor?: unknown } } =
+        await response.json().catch(() => ({}));
       throw new ApiError(
         data.error?.code ?? 'REQUEST_FAILED',
         data.error?.message ?? 'Something went wrong. Please try again.',
         response.status,
+        typeof data.error?.availableReserveMinor === 'string' &&
+          /^(0|[1-9]\d*)$/.test(data.error.availableReserveMinor)
+          ? data.error.availableReserveMinor
+          : undefined,
       );
     }
     return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>);

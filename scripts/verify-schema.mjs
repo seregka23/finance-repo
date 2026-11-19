@@ -380,6 +380,7 @@ async function verify() {
           "0007_accounts.sql",
           "0008_transfers.sql",
           "0009_refunds.sql",
+          "0010_reserves.sql",
         ],
       );
       assert.deepEqual(

@@ -1,0 +1,57 @@
+.reserve-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.reserve-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.reserve-row > div,
+.reserve-row > span {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.reserve-row strong {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.detail {
+  margin-top: 16px;
+}
+.detail-head,
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.actions {
+  justify-content: flex-start;
+  margin: 12px 0;
+}
+.entry-form {
+  display: grid;
+  gap: 12px;
+}
+.entry-form label {
+  display: grid;
+  gap: 4px;
+}
+.form-field {
+  display: grid;
+  gap: 4px;
+}
+@media (max-width: 400px) {
+  .reserve-row {
+    flex-wrap: wrap;
+  }
+  .reserve-row > div {
+    flex-basis: 55%;
+  }
+}

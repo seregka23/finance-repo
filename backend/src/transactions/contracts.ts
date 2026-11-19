@@ -1,7 +1,12 @@
 import type { Currency } from '../finance/money.js';
 
+export interface ReserveFunding {
+  reserveId: string;
+  amountMinor: string;
+}
 export interface PostingInput {
   type: 'expense' | 'income';
+  reserveFunding?: ReserveFunding | null;
   transactionDate: string;
   accountId: string;
   categoryId: string;

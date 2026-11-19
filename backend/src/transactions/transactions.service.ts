@@ -24,6 +24,7 @@ const inputKeys = [
   'exchangeRateSource',
   'merchant',
   'note',
+  'reserveFunding',
 ];
 function fields(value: unknown, allowed: string[]): Record<string, unknown> {
   if (
@@ -55,12 +56,16 @@ function posting(
   replacement = false,
 ): PostingInput {
   const required = replacement
-    ? inputKeys
+    ? inputKeys.filter((key) => key !== 'reserveFunding')
     : inputKeys.filter(
         (key) =>
-          !['exchangeRate', 'exchangeRateSource', 'merchant', 'note'].includes(
-            key,
-          ),
+          ![
+            'exchangeRate',
+            'exchangeRateSource',
+            'merchant',
+            'note',
+            'reserveFunding',
+          ].includes(key),
       );
   if (required.some((key) => !(key in body))) throw invalid();
   if (body.type !== 'expense' && body.type !== 'income') throw invalid();
@@ -83,7 +88,22 @@ function posting(
       exchangeRateSource = requiredText(body.exchangeRateSource, 200);
     }
     recordConversion(amount, currency, exchangeRate, exchangeRateSource);
+    let reserveFunding: PostingInput['reserveFunding'];
+    if ('reserveFunding' in body) {
+      if (body.type !== 'expense') throw invalid();
+      if (body.reserveFunding == null) reserveFunding = undefined;
+      else {
+        const f = fields(body.reserveFunding, ['reserveId', 'amountMinor']);
+        const fundingAmount = parseMinor(f.amountMinor);
+        if (fundingAmount <= 0n || fundingAmount > amount) throw invalid();
+        reserveFunding = {
+          reserveId: requiredText(f.reserveId, 200),
+          amountMinor: fundingAmount.toString(),
+        };
+      }
+    }
     return {
+      ...(reserveFunding !== undefined ? { reserveFunding } : {}),
       type: body.type,
       transactionDate: validateDate(body.transactionDate),
       accountId: requiredText(body.accountId, 200),

@@ -166,6 +166,12 @@
             {{ money(row.rsdEquivalentMinor || undefined, 'RSD') }}
           </p>
         }
+        @if (row.reserveFunding; as funding) {
+          <p>
+            {{ i18n.t('Reserve') }}: {{ reserveName(funding.reserveId) }} ·
+            {{ money(funding.amountMinor, row.currency) }}
+          </p>
+        }
         @if (row.note) {
           <p>{{ row.note }}</p>
         }
@@ -392,7 +398,7 @@
     } @else {
       <label
         >{{ i18n.t('Account')
-        }}<select class="field" formControlName="accountId">
+        }}<select class="field" formControlName="accountId" (change)="resetFunding()">
           <option value="">{{ i18n.t('Choose account') }}</option>
           @if (account(formValue().accountId); as previous) {
             @if (previous.status === 'archived') {
@@ -406,8 +412,56 @@
           }
         </select></label
       ><label
-        >{{ i18n.t('Amount') }}<input class="field" inputmode="decimal" formControlName="amount"
+        >{{ i18n.t('Amount')
+        }}<input
+          class="field"
+          inputmode="decimal"
+          formControlName="amount"
+          (input)="clearRevision()"
       /></label>
+      @if (formValue().type === 'expense') {
+        @if (reserveLoadError()) {
+          <div class="alert" role="status">
+            {{ i18n.t('Reserve options are unavailable.') }}
+            <button class="textbtn" type="button" (click)="retryReserves()">
+              {{ i18n.t('Retry') }}
+            </button>
+          </div>
+        }
+        <div class="reserve-field">
+          <label for="transaction-reserve-id">{{ i18n.t('Reserve (optional)') }}</label
+          ><select
+            id="transaction-reserve-id"
+            class="field"
+            formControlName="reserveId"
+            (change)="fundingChanged()"
+          >
+            <option value="">{{ i18n.t('None') }}</option>
+            @for (r of eligibleReserves(); track r.id) {
+              <option [value]="r.id">{{ r.name }} · {{ money(r.balanceMinor, r.currency) }}</option>
+            }
+          </select>
+        </div>
+        @if (formValue().reserveId) {
+          <label
+            >{{ i18n.t('Amount from reserve')
+            }}<input
+              class="field"
+              inputmode="decimal"
+              formControlName="reserveAmount"
+              (input)="clearRevision()"
+          /></label>
+        }
+        @if (revisedAllocation() !== null) {
+          <div class="notice" role="status">
+            {{ i18n.t('Available reserve balance') }}:
+            {{ money(revisedAllocation()!, account(formValue().accountId)?.currency) }}
+            <button class="btn" type="button" (click)="useRevisedAllocation()">
+              {{ i18n.t('Use revised allocation') }}
+            </button>
+          </div>
+        }
+      }
       @if (formValue().type !== 'refund') {
         <label
           >{{ i18n.t('Category')
