@@ -32,6 +32,17 @@ export class ApiTransport {
         : {}),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+    await this.check(response);
+    return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>);
+  }
+
+  async requestBlob(path: string): Promise<Blob> {
+    const response = await fetch('/api/v1' + path, { method: 'GET', credentials: 'same-origin' });
+    await this.check(response);
+    return response.blob();
+  }
+
+  private async check(response: Response): Promise<void> {
     if (!response.ok) {
       const data: { error?: { code?: string; message?: string; availableReserveMinor?: unknown } } =
         await response.json().catch(() => ({}));
@@ -45,6 +56,5 @@ export class ApiTransport {
           : undefined,
       );
     }
-    return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>);
   }
 }

@@ -202,3 +202,67 @@ it('keeps expense drafts and requires confirmation of a revised reserve split', 
   expect(c.revisedAllocation()).toBeNull();
   expect(request.mock.calls.filter((call) => call[1] === 'POST')).toHaveLength(1);
 });
+
+it('exports applied filters without pagination and shows an actionable size error', async () => {
+  const { ApiError } = await import('../../core/api');
+  const requestBlob = vi.fn().mockRejectedValue(new ApiError('EXPORT_TOO_LARGE', 'large', 413));
+  const request = vi.fn().mockResolvedValue({ transactions: [], nextCursor: null });
+  TestBed.configureTestingModule({
+    imports: [Transactions],
+    providers: [
+      provideRouter([]),
+      {
+        provide: Api,
+        useValue: {
+          selectedId: () => 'h',
+          session: () => ({ households: [{ id: 'h', timeZone: 'UTC' }] }),
+          request,
+          requestBlob,
+          handleError: async () => 'error',
+        },
+      },
+      { provide: Workspace, useValue: { load: vi.fn() } },
+      {
+        provide: AccountsService,
+        useValue: { list: async () => ({ accounts: [] }), members: async () => ({ members: [] }) },
+      },
+      { provide: CategoriesService, useValue: { list: async () => ({ categories: [] }) } },
+      { provide: ReservesService, useValue: { list: async () => ({ reserves: [] }) } },
+    ],
+  });
+  const fixture = TestBed.createComponent(Transactions);
+  await fixture.whenStable();
+  const c = fixture.componentInstance as unknown as {
+    filters: FormGroup;
+    load(): Promise<void>;
+    exportCsv(): Promise<void>;
+    exportError(): string;
+  };
+  c.filters.patchValue({ search: ' 100%_ ' });
+  await c.load();
+  c.filters.patchValue({ search: 'draft' });
+  await c.exportCsv();
+  expect(requestBlob).toHaveBeenCalledWith('/households/h/transactions/export?search=100%25_');
+  expect(c.exportError()).toContain('Narrow the filters');
+  requestBlob.mockResolvedValueOnce(new Blob(['<html>'], {type:'text/html'}));
+  await c.exportCsv();
+  expect(c.exportError()).toContain('not a CSV file');
+});
+
+it('does not download an export that resolves after a household switch', async () => {
+  const { signal } = await import('@angular/core');
+  const selectedId = signal('first');
+  let resolveExport!: (value: Blob) => void;
+  const requestBlob = vi.fn().mockImplementation(() => new Promise<Blob>((resolve) => { resolveExport = resolve; }));
+  TestBed.configureTestingModule({ imports:[Transactions], providers:[provideRouter([]),
+    { provide:Api, useValue:{ selectedId, session:()=>({households:[]}), request:vi.fn().mockResolvedValue({transactions:[],nextCursor:null}), requestBlob, handleError:async()=> 'error' } },
+    { provide:Workspace, useValue:{load:vi.fn()} },
+    { provide:AccountsService, useValue:{list:async()=>({accounts:[]}),members:async()=>({members:[]})} },
+    { provide:CategoriesService, useValue:{list:async()=>({categories:[]})} },
+    { provide:ReservesService, useValue:{list:async()=>({reserves:[]})} },
+  ] });
+  const fixture=TestBed.createComponent(Transactions); await fixture.whenStable();
+  const c=fixture.componentInstance as unknown as {exportCsv():Promise<void>; exporting():boolean};
+  const pending=c.exportCsv(); selectedId.set('second'); TestBed.tick(); resolveExport(new Blob(['old'])); await pending;
+  expect(c.exporting()).toBe(false); expect(fixture.nativeElement.querySelector('a[download]')).toBeNull();
+});

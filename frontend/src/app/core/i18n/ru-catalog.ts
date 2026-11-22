@@ -461,5 +461,10 @@ export const ru = {
   'Unknown category': 'Неизвестная категория',
   'View all transactions': 'Все операции',
   'Choose a valid month.': 'Выберите корректный месяц.',
+  'Export CSV': 'Экспорт CSV',
+  'Exporting…': 'Экспорт…',
+  'Export is too large. Narrow the filters and try again.':
+    'Файл слишком большой. Уточните фильтры и повторите попытку.',
+  'The export response was not a CSV file. Please try again.': 'Ответ экспорта не является файлом CSV. Попробуйте ещё раз.',
 } as const;
 export type Message = keyof typeof ru;

@@ -9,7 +9,9 @@ import {
   Post,
   Query,
   Req,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import type { AuthRequest } from '../auth/auth.js';
 import { TransactionsService } from './transactions.service.js';
 
@@ -22,6 +24,21 @@ export class TransactionsController {
     @Query() query: unknown,
   ) {
     return this.service.list(req.identity, h, query);
+  }
+  @Get('export') async exportCsv(
+    @Req() req: AuthRequest,
+    @Param('householdId') h: string,
+    @Query() query: unknown,
+    @Res() res: Response,
+  ) {
+    const csv = await this.service.exportCsv(req.identity, h, query);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="transactions.csv"',
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(csv);
   }
   @Get(':id') get(
     @Req() req: AuthRequest,

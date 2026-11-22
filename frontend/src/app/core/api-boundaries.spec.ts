@@ -50,3 +50,26 @@ describe('API boundaries', () => {
     expect(api.session()?.user.email).toBe('a@example.com');
   });
 });
+
+it('downloads binary responses with same-origin credentials and preserves error codes', async () => {
+  const bytes = new Uint8Array([0xef, 0xbb, 0xbf, 0x61]);
+  const fetchMock = vi
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(new Response(bytes))
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { code: 'EXPORT_TOO_LARGE', message: 'too large' } }), {
+        status: 413,
+      }),
+    );
+  const api = TestBed.inject(Api);
+  const blob = await api.requestBlob('/transactions/export');
+  expect(new Uint8Array(await blob.arrayBuffer())).toEqual(bytes);
+  expect(fetchMock).toHaveBeenCalledWith('/api/v1/transactions/export', {
+    method: 'GET',
+    credentials: 'same-origin',
+  });
+  await expect(api.requestBlob('/transactions/export')).rejects.toMatchObject({
+    code: 'EXPORT_TOO_LARGE',
+    status: 413,
+  });
+});

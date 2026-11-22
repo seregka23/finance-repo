@@ -1104,6 +1104,53 @@ export class PostingRepository {
       throw unavailable();
     }
   }
+  async exportLabels(
+    identity: Identity,
+    householdId: string,
+    ids: { accounts: string[]; categories: string[] },
+  ) {
+    try {
+      const result = {
+        accounts: new Map<string, string>(),
+        categories: new Map<string, string>(),
+      };
+      for (const kind of ['accounts', 'categories'] as const) {
+        const list = [...new Set(ids[kind])];
+        for (let offset = 0; offset < list.length; offset += 32) {
+          const chunk = list.slice(offset, offset + 32);
+          const scope = Prisma.sql`household_id=${householdId} AND EXISTS(SELECT 1 FROM households h JOIN household_members m ON m.household_id=h.id WHERE h.id=${householdId} AND h.status='active' AND m.identity_subject=${identity.subject} AND m.status='active')`;
+          const rows =
+            kind === 'accounts'
+              ? await this.prisma.$queryRaw<{ id: string; name: string }[]>(
+                  Prisma.sql`SELECT id,name FROM accounts WHERE ${scope} AND id IN (${Prisma.join(chunk)})`,
+                )
+              : await this.prisma.$queryRaw<{ id: string; name: string }[]>(
+                  Prisma.sql`SELECT id,name FROM categories WHERE ${scope} AND id IN (${Prisma.join(chunk)})`,
+                );
+          for (const row of rows) result[kind].set(row.id, row.name);
+        }
+      }
+      await this.assertExportAccess(identity, householdId);
+      return result;
+    } catch (e) {
+      if (e instanceof Error && 'getStatus' in e) throw e;
+      throw unavailable();
+    }
+  }
+  async assertExportAccess(identity: Identity, householdId: string) {
+    const access = await this.prisma.household.findFirst({
+      where: {
+        id: householdId,
+        status: 'active',
+        members: {
+          some: { identitySubject: identity.subject, status: 'active' },
+        },
+      },
+      select: { id: true },
+    });
+    if (!access)
+      throw apiError(404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
+  }
   async list(
     identity: Identity,
     householdId: string,

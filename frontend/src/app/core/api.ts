@@ -21,6 +21,9 @@ export class Api {
   ): Promise<T> {
     return this.transport.request<T>(path, method, body, headers);
   }
+  requestBlob(path: string): Promise<Blob> {
+    return this.transport.requestBlob(path);
+  }
   refreshSession(preferred?: string): Promise<void> {
     return this.state.refreshSession(preferred);
   }

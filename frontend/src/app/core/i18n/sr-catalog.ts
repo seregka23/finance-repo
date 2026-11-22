@@ -465,4 +465,9 @@ export const sr: Record<Message, string> = {
   'Unknown category': 'Nepoznata kategorija',
   'View all transactions': 'Sve transakcije',
   'Choose a valid month.': 'Izaberite ispravan mesec.',
+  'Export CSV': 'Izvezi CSV',
+  'Exporting…': 'Izvoz…',
+  'Export is too large. Narrow the filters and try again.':
+    'Izvoz je prevelik. Suzite filtere i pokušajte ponovo.',
+  'The export response was not a CSV file. Please try again.': 'Odgovor izvoza nije CSV datoteka. Pokušajte ponovo.',
 };
