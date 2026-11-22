@@ -993,6 +993,152 @@ async function verify() {
     },
   );
   await check(
+    "monthly plans use posted category spending and enforce a single limit",
+    async () => {
+      const path = `/api/v1/households/${h}/plans`;
+      const month = "2025-08";
+      const nextMonth = "2025-09";
+      const a = await create(
+        input("Budget account", "1500000", { openingDate: `${month}-01` }),
+      );
+      const b = await create(input("Budget transfer destination", "0"));
+      const travel = await api(`/api/v1/households/${h}/categories`, owner, {
+        method: "POST",
+        status: 201,
+        body: { name: "Budget travel", type: "expense" },
+      });
+      const payload = { month, categoryId: travel.id, limitMinor: "1000000" };
+      const defaultMonth = await api(path, owner);
+      assert.equal(
+        defaultMonth.month,
+        new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Europe/Belgrade",
+          year: "numeric",
+          month: "2-digit",
+        }).format(new Date()),
+      );
+      await api(`${path}?month=2025-13`, owner, { status: 400 });
+      await api(path, stranger, { status: 404 });
+      const results = await Promise.all(
+        [1, 2].map(() =>
+          fetch(base + path, {
+            method: "POST",
+            headers: {
+              Origin: appOrigin,
+              Cookie: `finance_session=${owner}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          }),
+        ),
+      );
+      assert.deepEqual(results.map(({ status }) => status).sort(), [201, 409]);
+      const plan = await results.find(({ status }) => status === 201).json();
+      const nextPlan = await api(path, owner, {
+        method: "POST",
+        status: 201,
+        body: { ...payload, month: nextMonth, limitMinor: "0" },
+      });
+      await api(path, owner, {
+        method: "POST",
+        status: 400,
+        body: { ...payload, limitMinor: "-1" },
+      });
+      const expense = {
+        type: "expense",
+        transactionDate: `${month}-03`,
+        accountId: a.id,
+        categoryId: travel.id,
+        currency: "RSD",
+        amountMinor: "200000",
+        merchant: null,
+        note: null,
+        exchangeRate: null,
+        exchangeRateSource: null,
+      };
+      const spent = await postTransaction(expense);
+      async function figures(target, expected) {
+        const result = await api(`${path}?month=${target}`, member);
+        assert.equal(result.month, target);
+        assert.equal(result.plans.length, 1);
+        const {
+          actualMinor,
+          remainingMinor,
+          overspentMinor,
+          utilizationBasisPoints,
+          missingFxCount,
+        } = result.plans[0];
+        assert.deepEqual(
+          [
+            actualMinor,
+            remainingMinor,
+            overspentMinor,
+            utilizationBasisPoints,
+            missingFxCount,
+          ],
+          expected,
+        );
+      }
+      await figures(month, ["200000", "800000", "0", "2000", 0]);
+      await figures(nextMonth, ["0", "0", "0", null, 0]);
+      const transfer = await postTransaction({
+        type: "transfer",
+        transactionDate: `${month}-05`,
+        fromAccountId: a.id,
+        toAccountId: b.id,
+        debitAmountMinor: "50000",
+        creditAmountMinor: "50000",
+        debitCurrency: "RSD",
+        creditCurrency: "RSD",
+        fee: { amountMinor: "1000", categoryId: travel.id },
+      });
+      await figures(month, ["201000", "799000", "0", "2010", 0]);
+      await voidTransaction(transfer);
+      const adjusted = await api(`${transactionPath}/${spent.id}`, owner, {
+        method: "PATCH",
+        body: { ...expense, amountMinor: "1100000", version: spent.version },
+      });
+      await figures(month, ["1100000", "-100000", "100000", "11000", 0]);
+      const refund = await postTransaction({
+        type: "refund",
+        purchaseTransactionId: spent.id,
+        transactionDate: `${nextMonth}-01`,
+        accountId: a.id,
+        amountMinor: "10000",
+      });
+      await figures(month, ["1100000", "-100000", "100000", "11000", 0]);
+      await figures(nextMonth, ["-10000", "10000", "0", null, 0]);
+      await api(`${path}/${nextPlan.id}`, owner, {
+        method: "PATCH",
+        body: { limitMinor: "20000" },
+      });
+      await figures(nextMonth, ["-10000", "30000", "0", "-5000", 0]);
+      await voidTransaction(refund);
+      assert(adjusted.version > spent.version);
+      await voidTransaction(await api(`${transactionPath}/${spent.id}`, owner));
+      await figures(month, ["0", "1000000", "0", "0", 0]);
+      const foreign = await create(
+        input("Historical EUR budget account", "10000", { currency: "EUR" }),
+      );
+      const legacy = randomUUID();
+      const actor = members.find((m) => m.role === "owner").id;
+      await query(
+        `INSERT INTO transactions(id,household_id,type,transaction_date,category_id,author_member_id,status,created_at,updated_at) VALUES (${quote(legacy)},${quote(h)},'expense','${month}-10',${quote(travel.id)},${quote(actor)},'posted','${month}-10','${month}-10')`,
+      );
+      await query(
+        `INSERT INTO account_movements(id,household_id,account_id,transaction_id,type,movement_date,amount_minor,currency,created_at) VALUES (${quote(randomUUID())},${quote(h)},${quote(foreign.id)},${quote(legacy)},'transaction','${month}-10',-500,'EUR','${month}-10')`,
+      );
+      const recorded = await postTransaction({
+        ...expense,
+        amountMinor: "1234",
+      });
+      await figures(month, ["1234", null, null, null, 1]);
+      await voidTransaction(recorded);
+      await api(`${path}/${plan.id}`, owner, { method: "DELETE", status: 204 });
+      assert.deepEqual((await api(`${path}?month=${month}`, owner)).plans, []);
+    },
+  );
+  await check(
     "movement cursors are bounded and live membership is rechecked inside a write batch",
     async () => {
       let a = await create(input("Pages", "0"));

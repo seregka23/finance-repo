@@ -2,11 +2,15 @@ import { Routes } from '@angular/router';
 const finance = () => import('./features/finance/finance').then((m) => m.Finance);
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
-  ...['Dashboard', 'Budgets', 'Reports'].map((page) => ({
+  ...['Dashboard', 'Reports'].map((page) => ({
     path: page.toLowerCase(),
     data: { page },
     loadComponent: finance,
   })),
+  {
+    path: 'budgets',
+    loadComponent: () => import('./features/budgets/budgets').then((m) => m.Budgets),
+  },
   {
     path: 'reserves',
     loadComponent: () => import('./features/reserves/reserves').then((m) => m.Reserves),

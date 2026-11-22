@@ -29,6 +29,7 @@ import { AccountsController } from './accounts/accounts.controller.js';
 import { AccountsService } from './accounts/accounts.service.js';
 import { AccountsRepository } from './accounts/accounts.repository.js';
 import { ReservesController, ReservesService } from './reserves/reserves.js';
+import { PlansController, PlansService } from './plans/plans.js';
 import { DATABASE, HealthController } from './health.controller.js';
 
 @Module({
@@ -47,6 +48,7 @@ export class WorkerModule {
         TransactionsController,
         AccountsController,
         ReservesController,
+        PlansController,
         ...(probeEnabled ? [InfrastructureProbeController] : []),
       ],
       providers: [
@@ -62,6 +64,7 @@ export class WorkerModule {
         AccountsService,
         AccountsRepository,
         ReservesService,
+        PlansService,
         { provide: APP_FILTER, useClass: ApiErrorFilter },
         { provide: APP_GUARD, useClass: ApiAuthGuard },
         { provide: APP_GUARD, useClass: HouseholdGuard },

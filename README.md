@@ -399,6 +399,14 @@ adjustments, currency locking, archive/restore and movement history. See the
 Run `npm run verify:accounts` for disposable local D1 API checks after building;
 `node scripts/verify-accounts-ui.mjs` exercises the actual UI in Chromium.
 
+## Monthly budgets
+
+The Budgets page opens on the current household month. Add a spending limit
+in RSD for an expense category, or switch months to review past limits.
+Progress uses recorded transactions and flags amounts that lack FX data.
+See the [plans API](docs/api/plans.md). The local `verify:accounts` and
+`verify:navigation` suites exercise API calculations and the browser flow.
+
 ## Reserves
 
 Create a named reserve for an active account and allocate or release funds on

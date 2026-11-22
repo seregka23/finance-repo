@@ -217,7 +217,7 @@ async function run() {
             assert.ok(
               await page
                 .getByRole("button", { name: "Add budget", exact: true })
-                .isDisabled(),
+                .isVisible(),
             );
           if (name === "Reserves")
             assert.ok(
@@ -879,6 +879,136 @@ async function run() {
         .waitFor();
       await axe(page, "320px reserve movements");
       await screenshot(page, "mobile-reserves");
+    },
+  );
+  await check(
+    "monthly budget dialogs and recorded spending at 320px",
+    async () => {
+      const id = await page
+        .getByLabel("Household", { exact: true })
+        .inputValue();
+      const path = `/households/${id}`;
+      const month = "2025-10";
+      const account = await api(
+        `${path}/accounts`,
+        "POST",
+        {
+          name: "Budget browser cash",
+          type: "cash",
+          currency: "RSD",
+          ownerMemberId: null,
+          designation: "personal",
+          openingBalanceMinor: "500000",
+          openingDate: `${month}-01`,
+        },
+        201,
+      );
+      const category = await api(
+        `${path}/categories`,
+        "POST",
+        { name: "Budget browser groceries", type: "expense" },
+        201,
+      );
+      await api(
+        `${path}/transactions`,
+        "POST",
+        {
+          type: "expense",
+          transactionDate: `${month}-02`,
+          accountId: account.id,
+          categoryId: category.id,
+          currency: "RSD",
+          amountMinor: "200000",
+        },
+        201,
+        { "Idempotency-Key": "browser-budget-expense" },
+      );
+      await page.setViewportSize({ width: 320, height: 740 });
+      await navigate("Budgets");
+      const picker = page.getByLabel("Month", { exact: true });
+      await page.waitForFunction(() =>
+        Boolean(document.querySelector('input[type="month"]')?.value),
+      );
+      assert.match(await picker.inputValue(), /^\d{4}-\d{2}$/);
+      await picker.fill(month);
+      const opener = page.getByRole("button", {
+        name: "Add budget",
+        exact: true,
+      });
+      await opener.click({ trial: true });
+      await opener.focus();
+      await opener.press("Enter");
+      const dialog = page.getByRole("dialog");
+      await dialog.getByLabel(/^Category/).selectOption(category.id);
+      await dialog.getByLabel(/^Monthly limit/).fill("10000.00");
+      await axe(page, "320px monthly budget dialog");
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await dialog.waitFor({ state: "hidden" });
+      await page.getByText(/8,000\.00\s+RSD/).waitFor();
+      await page
+        .getByText(/20(?:\.00)?%/)
+        .first()
+        .waitFor();
+      assert.ok(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
+      await axe(page, "320px monthly budget results");
+      await screenshot(page, "mobile-budgets");
+      await picker.fill("2025-11");
+      await page
+        .getByText(category.name, { exact: true })
+        .waitFor({ state: "hidden" });
+      await picker.fill(month);
+      await page.getByText(category.name, { exact: true }).waitFor();
+      await page.getByRole("button", { name: /^Edit budget/ }).click();
+      await dialog.getByLabel(/^Monthly limit/).fill("1000.00");
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await dialog.waitFor({ state: "hidden" });
+      await page
+        .getByText(/200(?:\.00)?%/)
+        .first()
+        .waitFor();
+      const foreign = await api(
+        `${path}/accounts`,
+        "POST",
+        {
+          name: "Historical browser EUR",
+          type: "cash",
+          currency: "EUR",
+          ownerMemberId: null,
+          designation: "personal",
+          openingBalanceMinor: "10000",
+          openingDate: `${month}-01`,
+        },
+        201,
+      );
+      const { members } = await api(`${path}/members`, "GET", undefined, 200);
+      const actor = members.find((member) => member.role === "owner");
+      assert(actor);
+      const quote = (value) => `'${String(value).replaceAll("'", "''")}'`;
+      const legacyId = "verification-browser-budget-missing-fx";
+      for (const sql of [
+        `INSERT INTO transactions(id,household_id,type,transaction_date,category_id,author_member_id,status,created_at,updated_at) VALUES (${quote(legacyId)},${quote(id)},'expense','${month}-03',${quote(category.id)},${quote(actor.id)},'posted','${month}-03','${month}-03')`,
+        `INSERT INTO account_movements(id,household_id,account_id,transaction_id,type,movement_date,amount_minor,currency,created_at) VALUES ('verification-browser-budget-movement',${quote(id)},${quote(foreign.id)},${quote(legacyId)},'transaction','${month}-03',-100,'EUR','${month}-03')`,
+      ]) {
+        const seeded = await page.request.post(`${base}/_verification/sql`, {
+          data: { sql },
+        });
+        assert.equal(seeded.status(), 200, await seeded.text());
+      }
+      await picker.fill("2025-11");
+      await page.getByRole("progressbar").waitFor({ state: "hidden" });
+      await picker.fill(month);
+      await page.getByText(/Known spending subtotal/).waitFor();
+      assert.equal(await page.getByRole("progressbar").count(), 0);
+      await axe(page, "320px incomplete budget");
+      page.once("dialog", (confirmation) => confirmation.accept());
+      await page.getByRole("button", { name: /^Delete budget/ }).click();
+      await page
+        .getByText(category.name, { exact: true })
+        .waitFor({ state: "hidden" });
     },
   );
   assert.deepEqual(pageErrors, [], "browser page errors");

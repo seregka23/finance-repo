@@ -407,5 +407,38 @@ export const ru = {
   'Reserve options are unavailable.': 'Список резервов недоступен.',
   'Reserve options are unavailable. Retry before editing this transaction.':
     'Список резервов недоступен. Повторите загрузку перед изменением операции.',
+  'Plan and track monthly spending in RSD.': 'Планируйте и отслеживайте расходы за месяц в RSD.',
+  Month: 'Месяц',
+  'Add an active expense category to create a budget.':
+    'Добавьте активную категорию расходов, чтобы создать бюджет.',
+  'All eligible categories already have a budget for this month.':
+    'Для всех подходящих категорий уже есть бюджет на этот месяц.',
+  'Monthly budgets': 'Бюджеты на месяц',
+  'Loading budgets…': 'Загрузка бюджетов…',
+  'Choose a month.': 'Выберите месяц.',
+  'No budgets for this month.': 'На этот месяц бюджетов нет.',
+  'Edit budget': 'Изменить бюджет',
+  'Delete budget': 'Удалить бюджет',
+  'Known spending subtotal': 'Известная часть расходов',
+  Spent: 'Потрачено',
+  'Incomplete: some transactions have no exchange rate.':
+    'Неполные данные: для некоторых операций нет курса.',
+  Used: 'Использовано',
+  'budget progress': 'исполнение бюджета',
+  'No percentage for a zero limit.': 'Для нулевого лимита процент не рассчитывается.',
+  'over budget': 'сверх бюджета',
+  remaining: 'осталось',
+  'Monthly limit': 'Месячный лимит',
+  'Enter a valid nonnegative limit and choose a category.':
+    'Введите корректный неотрицательный лимит и выберите категорию.',
+  'Budget updated.': 'Бюджет обновлён.',
+  'Budget added.': 'Бюджет добавлен.',
+  'Budget deleted.': 'Бюджет удалён.',
+  'A budget already exists for this category and month.':
+    'Бюджет для этой категории и месяца уже существует.',
+  'Delete this budget?': 'Удалить этот бюджет?',
+  'This budget is linked to other records and cannot be deleted.':
+    'Бюджет связан с другими записями и не может быть удалён.',
+  'Budget categories are unavailable.': 'Категории бюджета недоступны.',
 } as const;
 export type Message = keyof typeof ru;
