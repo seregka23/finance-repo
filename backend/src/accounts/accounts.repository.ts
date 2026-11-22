@@ -21,6 +21,12 @@ function translate(e: unknown): never {
       'HOUSEHOLD_NOT_FOUND',
       'Household not found',
     ],
+    [
+      'account_reserve_nonzero',
+      409,
+      'ACCOUNT_RESERVE_NONZERO',
+      'Release all reserved funds before archiving this account',
+    ],
     ['account_not_found', 404, 'ACCOUNT_NOT_FOUND', 'Account not found'],
     [
       'account_version_conflict',

@@ -750,6 +750,137 @@ async function run() {
       await screenshot(page, "desktop-manual-transactions");
     },
   );
+  await check(
+    "mobile reserve management and explicit revised expense funding",
+    async () => {
+      const id = await page
+        .getByLabel("Household", { exact: true })
+        .inputValue();
+      const path = `/households/${id}`;
+      const { accounts } = await api(`${path}/accounts`, "GET", undefined, 200);
+      const account = accounts.find(
+        (a) => a.name === "Browser transaction cash",
+      );
+      const { categories } = await api(
+        `${path}/categories`,
+        "GET",
+        undefined,
+        200,
+      );
+      const category = categories.find((c) => c.name === "Browser groceries");
+      assert(account && category);
+      await page.setViewportSize({ width: 320, height: 740 });
+      await navigate("Reserves");
+      await page
+        .getByRole("button", { name: "Create reserve", exact: true })
+        .click();
+      const create = page.getByRole("dialog");
+      await create
+        .getByLabel("Name", { exact: true })
+        .fill("Browser utilities");
+      await create
+        .getByLabel("Account", { exact: true })
+        .selectOption(account.id);
+      await create.getByRole("button", { name: "Save", exact: true }).click();
+      await create.waitFor({ state: "hidden" });
+      const { reserves } = await api(`${path}/reserves`, "GET", undefined, 200);
+      const reserve = reserves.find((r) => r.name === "Browser utilities");
+      assert(reserve);
+      await page
+        .getByRole("button", { name: "Allocate funds", exact: true })
+        .click();
+      const allocation = page.getByRole("dialog");
+      await allocation.getByLabel("Amount", { exact: true }).fill("12.00");
+      await allocation
+        .getByRole("button", { name: "Save", exact: true })
+        .click();
+      await allocation.waitFor({ state: "hidden" });
+      await page
+        .getByRole("button", { name: "Release funds", exact: true })
+        .click();
+      const release = page.getByRole("dialog");
+      await release.getByLabel("Amount", { exact: true }).fill("2.00");
+      await release.getByRole("button", { name: "Save", exact: true }).click();
+      await release.waitFor({ state: "hidden" });
+      const funded = await api(
+        `${path}/reserves/${reserve.id}`,
+        "GET",
+        undefined,
+        200,
+      );
+      assert.equal(funded.balanceMinor, "1000");
+      await axe(page, "320px reserves management");
+      await navigate("Transactions");
+      await page
+        .getByRole("button", { name: "Add transaction", exact: true })
+        .click();
+      const expense = page.getByRole("dialog");
+      await expense.getByLabel(/^Account/).selectOption(account.id);
+      await expense.getByLabel(/^Category/).selectOption(category.id);
+      await expense.getByLabel("Amount", { exact: true }).fill("15.00");
+      await expense
+        .getByLabel("Merchant", { exact: true })
+        .fill("Browser reserve purchase");
+      await expense
+        .getByLabel(/^Reserve \(optional\)/)
+        .selectOption(reserve.id);
+      const reserveAmount = expense.getByLabel("Amount from reserve", {
+        exact: true,
+      });
+      await reserveAmount.fill("8.00");
+      await api(
+        `${path}/reserves/${reserve.id}/movements`,
+        "POST",
+        { type: "release", amountMinor: "600" },
+        201,
+      );
+      const save = expense.getByRole("button", { name: "Save", exact: true });
+      async function submitFunded(expected) {
+        const pending = page.waitForResponse(
+          (response) =>
+            response.url() === `${base}/api/v1${path}/transactions` &&
+            response.request().method() === "POST",
+        );
+        await save.click();
+        const response = await pending;
+        assert.equal(response.status(), expected, await response.text());
+        return response.json();
+      }
+      await submitFunded(409);
+      assert.equal(await reserveAmount.inputValue(), "8.00");
+      await expense
+        .getByRole("button", { name: "Use revised allocation", exact: true })
+        .click();
+      assert.equal(Number(await reserveAmount.inputValue()), 4);
+      await axe(page, "320px revised reserve funding");
+      const posted = await submitFunded(201);
+      assert.deepEqual(posted.reserveFunding, {
+        reserveId: reserve.id,
+        amountMinor: "400",
+      });
+      await expense.waitFor({ state: "hidden" });
+      await navigate("Reserves");
+      const refreshed = await api(
+        `${path}/reserves/${reserve.id}`,
+        "GET",
+        undefined,
+        200,
+      );
+      assert.equal(refreshed.balanceMinor, "0");
+      await page
+        .getByRole("button", { name: "Manage Browser utilities", exact: true })
+        .click();
+      await page
+        .getByRole("heading", { name: "Movement history", exact: true })
+        .waitFor();
+      await page
+        .locator(".detail")
+        .getByText(/−4\.00\s+RSD/)
+        .waitFor();
+      await axe(page, "320px reserve movements");
+      await screenshot(page, "mobile-reserves");
+    },
+  );
   assert.deepEqual(pageErrors, [], "browser page errors");
   await writeFile(
     join(artifacts, "report.json"),

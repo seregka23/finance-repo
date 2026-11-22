@@ -602,7 +602,7 @@ async function verify() {
         transactions: true,
         imports: false,
         budgets: false,
-        reserves: false,
+        reserves: true,
         reports: false,
       });
       assert.deepEqual((await api(path, member)).counts, empty);

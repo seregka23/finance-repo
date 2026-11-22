@@ -399,6 +399,15 @@ adjustments, currency locking, archive/restore and movement history. See the
 Run `npm run verify:accounts` for disposable local D1 API checks after building;
 `node scripts/verify-accounts-ui.mjs` exercises the actual UI in Chromium.
 
+## Reserves
+
+Create a named reserve for an active account and allocate or release funds on
+the Reserves page. A reserve uses the account currency and carries across
+months. For an expense, select a reserve on that account and enter the part it
+covers. The remainder uses available funds. See the [API contract](docs/api/reserves.md)
+and [database protocol](docs/database/reserves.md). `npm run verify:accounts`
+exercises allocations, reserve-funded expenses, refunds, and voids on local D1.
+
 ## Frontend languages
 
 Use the language selector above the workspace to switch between English,

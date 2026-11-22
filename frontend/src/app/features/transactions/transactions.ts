@@ -17,6 +17,7 @@ import { Workspace } from '../../core/workspace';
 import { AccountsService } from '../accounts/accounts.service';
 import { Account } from '../accounts/account.model';
 import { CategoriesService, Category } from '../categories/categories.service';
+import { Reserve, ReservesService } from '../reserves/reserves.service';
 import { NgTemplateOutlet } from '@angular/common';
 import { containDialogFocus, openCreationDialog } from '../../shared/ui/creation-dialog';
 import { decimalToMinor, formatMinor } from '../../shared/formatters/formatters';
@@ -46,6 +47,7 @@ interface Row {
   creditCurrency?: string;
   purchaseTransactionId?: string;
   parentTransactionId?: string;
+  reserveFunding?: { reserveId: string; amountMinor: string } | null;
   fee?: {
     amountMinor: string;
     categoryId: string;
@@ -66,6 +68,7 @@ export class Transactions {
   protected readonly api = inject(Api);
   protected readonly i18n = inject(Localization);
   private readonly accountsService = inject(AccountsService);
+  private readonly reservesService = inject(ReservesService);
   private readonly categoriesService = inject(CategoriesService);
   private readonly workspace = inject(Workspace);
   private readonly route = inject(ActivatedRoute);
@@ -77,6 +80,18 @@ export class Transactions {
   private pendingCreate = this.route.snapshot.queryParamMap.has('create');
   private readonly fb = inject(FormBuilder);
   protected readonly accounts = signal<Account[]>([]);
+  protected readonly reserves = signal<Reserve[]>([]);
+  protected readonly reserveLoadError = signal(false);
+  protected readonly reserveLoaded = signal(false);
+  protected readonly revisedAllocation = signal<string | null>(null);
+  protected readonly eligibleReserves = computed(() =>
+    this.reserves().filter(
+      (r) =>
+        r.status === 'active' &&
+        r.accountId === this.formValue().accountId &&
+        this.account(r.accountId)?.status === 'active',
+    ),
+  );
   protected readonly categories = signal<Category[]>([]);
   protected readonly members = signal<Members['members']>([]);
   protected readonly rows = signal<Row[]>([]);
@@ -122,6 +137,8 @@ export class Transactions {
     feeRate: '',
     feeRateSource: '',
     purchaseTransactionId: '',
+    reserveId: '',
+    reserveAmount: '',
   });
   protected readonly formValue = toSignal(this.form.valueChanges, {
     initialValue: this.form.getRawValue(),
@@ -147,6 +164,10 @@ export class Transactions {
       this.rows.set([]);
       this.accounts.set([]);
       this.categories.set([]);
+      this.reserves.set([]);
+      this.revisedAllocation.set(null);
+      this.reserveLoaded.set(false);
+      this.reserveLoadError.set(false);
       this.members.set([]);
       this.selected.set(null);
       this.editing.set(false);
@@ -189,6 +210,7 @@ export class Transactions {
   private async initialize(id: string, g: number) {
     this.loading.set(true);
     try {
+      void this.loadReserves(id, g);
       const [a, c, m] = await Promise.all([
         this.accountsService.list(id),
         this.categoriesService.list(id),
@@ -217,6 +239,25 @@ export class Transactions {
     } finally {
       if (this.current(id, g)) this.loading.set(false);
     }
+  }
+  private async loadReserves(id: string, g: number) {
+    this.reserveLoadError.set(false);
+    try {
+      const result = await this.reservesService.list(id);
+      if (this.current(id, g)) {
+        this.reserves.set(result.reserves);
+        this.reserveLoaded.set(true);
+      }
+    } catch {
+      if (this.current(id, g)) {
+        this.reserveLoaded.set(false);
+        this.reserveLoadError.set(true);
+      }
+    }
+  }
+  protected retryReserves() {
+    const id = this.api.selectedId();
+    if (id) void this.loadReserves(id, this.generation);
   }
   protected retry() {
     const id = this.api.selectedId();
@@ -281,6 +322,9 @@ export class Transactions {
   protected account(id?: string) {
     return this.accounts().find((a) => a.id === id);
   }
+  protected reserveName(id: string) {
+    return this.reserves().find((r) => r.id === id)?.name ?? id;
+  }
   protected category(id?: string) {
     return this.categories().find((c) => c.id === id)?.name ?? '—';
   }
@@ -308,6 +352,7 @@ export class Transactions {
   }
   protected create(event?: Event) {
     if (this.busy() || this.editing() || !this.active().length) return;
+    this.revisedAllocation.set(null);
     this.opener = (event?.currentTarget as HTMLElement | null) ?? null;
     this.detailGeneration++;
     this.selected.set(null);
@@ -340,6 +385,8 @@ export class Transactions {
       feeRate: '',
       feeRateSource: '',
       purchaseTransactionId: '',
+      reserveId: '',
+      reserveAmount: '',
     });
     openCreationDialog(this.dialog()?.nativeElement);
   }
@@ -348,6 +395,7 @@ export class Transactions {
     if (this.busy() && !force) return;
     if (!this.editing() || this.selected()) return;
     this.operation++;
+    this.revisedAllocation.set(null);
     this.busy.set(false);
     this.editing.set(false);
     this.dialog()?.nativeElement.close();
@@ -400,6 +448,7 @@ export class Transactions {
   protected edit(row: Row) {
     if (this.busy() || this.editing() || row.type === 'fee') return;
     this.detailGeneration++;
+    this.revisedAllocation.set(null);
     this.selected.set(row);
     this.review.set(null);
     this.editing.set(true);
@@ -422,11 +471,41 @@ export class Transactions {
       feeRate: row.fee?.exchangeRate ?? '',
       feeRateSource: row.fee?.exchangeRateSource ?? '',
       purchaseTransactionId: row.purchaseTransactionId ?? '',
+      reserveId: row.reserveFunding?.reserveId ?? '',
+      reserveAmount: this.minorToDecimal(row.reserveFunding?.amountMinor),
     });
     this.focusPanel();
     if (row.type === 'refund') void this.loadPurchases();
   }
+  protected resetFunding() {
+    this.form.patchValue({ reserveId: '', reserveAmount: '' });
+    this.revisedAllocation.set(null);
+  }
+  protected fundingChanged() {
+    this.form.controls.reserveAmount.setValue('');
+    this.revisedAllocation.set(null);
+  }
+  protected clearRevision() {
+    this.revisedAllocation.set(null);
+  }
+  protected useRevisedAllocation() {
+    const v = this.revisedAllocation();
+    if (v === null) return;
+    const amount = decimalToMinor(this.form.controls.amount.value, false, this.i18n.locale());
+    if (amount === null) {
+      this.revisedAllocation.set(null);
+      return;
+    }
+    const capped = BigInt(v) > BigInt(amount) ? amount : v;
+    if (capped === '0') this.resetFunding();
+    else {
+      this.form.controls.reserveAmount.setValue(this.minorToDecimal(capped));
+      this.revisedAllocation.set(null);
+    }
+    this.error.set('');
+  }
   protected kindChanged() {
+    this.resetFunding();
     if (this.form.controls.type.value === 'refund') void this.loadPurchases();
   }
   protected archivedCategory(id?: string) {
@@ -448,6 +527,10 @@ export class Transactions {
     if (!id) return;
     const v = this.form.getRawValue(),
       row = this.selected();
+    if (row?.reserveFunding && !this.reserveLoaded()) {
+      this.error.set('Reserve options are unavailable. Retry before editing this transaction.');
+      return;
+    }
     const amount = (s: string) => decimalToMinor(s, false, this.i18n.locale());
     const positive = (s: string | null) =>
       s !== null && BigInt(s) > 0n && BigInt(s) <= BigInt(Number.MAX_SAFE_INTEGER);
@@ -536,8 +619,23 @@ export class Transactions {
         this.error.set('Check the account, category, amount and exchange rate.');
         return;
       }
+      let funding: { reserveId: string; amountMinor: string } | undefined;
+      if (v.type === 'expense' && v.reserveId) {
+        const f = amount(v.reserveAmount);
+        if (
+          !this.eligibleReserves().some((r) => r.id === v.reserveId) ||
+          !positive(f) ||
+          !a ||
+          BigInt(f!) > BigInt(a)
+        ) {
+          this.error.set('Check the reserve and funding amount.');
+          return;
+        }
+        funding = { reserveId: v.reserveId, amountMinor: f! };
+      }
       body = {
         type: v.type,
+        ...(funding ? { reserveFunding: funding } : {}),
         ...common,
         accountId: account.id,
         categoryId: v.categoryId,
@@ -573,6 +671,7 @@ export class Transactions {
       } catch {}
       if (!row) this.cancelCreate(undefined, true);
       this.selected.set(saved);
+      this.revisedAllocation.set(null);
       this.editing.set(false);
       this.lastPayload = '';
       this.success.set('Transaction saved.');
@@ -581,6 +680,18 @@ export class Transactions {
     } catch (e) {
       if (!this.current(id, g) || operation !== this.operation) return;
       if (
+        e instanceof ApiError &&
+        e.code === 'RESERVE_INSUFFICIENT_FUNDS' &&
+        e.availableReserveMinor !== undefined &&
+        this.form.controls.reserveId.value === v.reserveId &&
+        this.form.controls.reserveAmount.value === v.reserveAmount &&
+        this.form.controls.amount.value === v.amount &&
+        this.form.controls.accountId.value === v.accountId &&
+        this.form.controls.type.value === v.type
+      ) {
+        this.revisedAllocation.set(e.availableReserveMinor);
+        this.error.set('The reserve balance changed. Review the available amount.');
+      } else if (
         row &&
         e instanceof ApiError &&
         ['VERSION_CONFLICT', 'REFUND_CONFLICT'].includes(e.code)
