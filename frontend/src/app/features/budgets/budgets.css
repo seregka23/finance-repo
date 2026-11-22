@@ -1,0 +1,65 @@
+.month-field,
+.form-field,
+.entry-form label {
+  display: grid;
+  gap: 4px;
+}
+.month-field {
+  max-width: 220px;
+  margin-bottom: 16px;
+}
+.entry-form {
+  display: grid;
+  gap: 12px;
+}
+.budget-row {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.budget-row:last-child {
+  border-bottom: 0;
+}
+.budget-row p {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+.budget-head,
+.detail-head,
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.budget-head,
+.detail-head {
+  justify-content: space-between;
+}
+.budget-head h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.track {
+  height: 8px;
+  background: #ebeffa;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.track span {
+  display: block;
+  height: 100%;
+  background: #6473d4;
+}
+.incomplete {
+  color: var(--ink);
+  font-weight: 600;
+}
+@media (max-width: 400px) {
+  .budget-head {
+    align-items: flex-start;
+  }
+  .budget-head > div:first-child {
+    flex-basis: 100%;
+  }
+}

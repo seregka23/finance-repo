@@ -411,4 +411,37 @@ export const sr: Record<Message, string> = {
   'Reserve options are unavailable.': 'Rezerve nisu dostupne.',
   'Reserve options are unavailable. Retry before editing this transaction.':
     'Rezerve nisu dostupne. Pokušajte ponovo pre izmene transakcije.',
+  'Plan and track monthly spending in RSD.': 'Planirajte i pratite mesečnu potrošnju u RSD.',
+  Month: 'Mesec',
+  'Add an active expense category to create a budget.':
+    'Dodajte aktivnu kategoriju troškova da biste napravili budžet.',
+  'All eligible categories already have a budget for this month.':
+    'Sve dostupne kategorije već imaju budžet za ovaj mesec.',
+  'Monthly budgets': 'Mesečni budžeti',
+  'Loading budgets…': 'Učitavanje budžeta…',
+  'Choose a month.': 'Izaberite mesec.',
+  'No budgets for this month.': 'Nema budžeta za ovaj mesec.',
+  'Edit budget': 'Izmeni budžet',
+  'Delete budget': 'Obriši budžet',
+  'Known spending subtotal': 'Poznati deo potrošnje',
+  Spent: 'Potrošeno',
+  'Incomplete: some transactions have no exchange rate.':
+    'Nepotpuno: neke transakcije nemaju kurs.',
+  Used: 'Iskorišćeno',
+  'budget progress': 'napredak budžeta',
+  'No percentage for a zero limit.': 'Za nulti limit procenat nije dostupan.',
+  'over budget': 'preko budžeta',
+  remaining: 'preostalo',
+  'Monthly limit': 'Mesečni limit',
+  'Enter a valid nonnegative limit and choose a category.':
+    'Unesite ispravan nenegativan limit i izaberite kategoriju.',
+  'Budget updated.': 'Budžet je ažuriran.',
+  'Budget added.': 'Budžet je dodat.',
+  'Budget deleted.': 'Budžet je obrisan.',
+  'A budget already exists for this category and month.':
+    'Budžet za ovu kategoriju i mesec već postoji.',
+  'Delete this budget?': 'Obrisati ovaj budžet?',
+  'This budget is linked to other records and cannot be deleted.':
+    'Budžet je povezan sa drugim zapisima i ne može se obrisati.',
+  'Budget categories are unavailable.': 'Kategorije budžeta nisu dostupne.',
 };

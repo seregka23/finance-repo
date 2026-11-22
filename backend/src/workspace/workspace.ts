@@ -58,7 +58,7 @@ export class WorkspaceService {
         accounts: true,
         transactions: true,
         imports: false,
-        budgets: false,
+        budgets: true,
         reserves: true,
         reports: false,
       },

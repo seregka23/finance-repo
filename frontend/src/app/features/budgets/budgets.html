@@ -1,0 +1,202 @@
+<div class="pagehead">
+  <div>
+    <h1 tabindex="-1">{{ i18n.t('Budgets') }}</h1>
+    <p>{{ i18n.t('Plan and track monthly spending in RSD.') }}</p>
+  </div>
+  @if (api.selectedId()) {
+    <button
+      class="btn primary"
+      type="button"
+      [disabled]="
+        loading() ||
+        categoryLoading() ||
+        categoryError() ||
+        busy() ||
+        !month() ||
+        !available().length
+      "
+      (click)="start($event)"
+    >
+      {{ i18n.t('Add budget') }}
+    </button>
+  }
+</div>
+@if (!api.selectedId()) {
+  <section class="panel">
+    <h2>{{ i18n.t('Create a household first') }}</h2>
+    <a class="btn" routerLink="/settings">{{ i18n.t('Go to household settings') }}</a>
+  </section>
+} @else {
+  <div class="month-field">
+    <label for="budget-month">{{ i18n.t('Month') }}</label><input
+      id="budget-month"
+      class="field"
+      type="month"
+      [value]="month()"
+      [disabled]="busy() || opened()"
+      (change)="changeMonth($event)"
+    />
+  </div>
+  @if (loadError()) {
+    <div class="alert" role="alert">
+      {{ i18n.t(loadError()) }}
+      <button class="textbtn" type="button" (click)="retry()">{{ i18n.t('Retry') }}</button>
+    </div>
+  }
+  @if (success()) {
+    <div class="notice" role="status">{{ i18n.t(success()) }}</div>
+  }
+  @if (categoryError()) {
+    <div class="alert" role="status">
+      {{ i18n.t('Budget categories are unavailable.') }}
+      <button class="textbtn" type="button" (click)="retryCategories()">
+        {{ i18n.t('Retry') }}
+      </button>
+    </div>
+  }
+  @if (
+    !loading() && !categoryLoading() && !categoryError() && !loadError() && !categories().length
+  ) {
+    <p>
+      {{ i18n.t('Add an active expense category to create a budget.') }}
+      <a routerLink="/categories">{{ i18n.t('Manage categories') }}</a>
+    </p>
+  }
+  @if (
+    !loading() &&
+    !categoryLoading() &&
+    !categoryError() &&
+    !loadError() &&
+    categories().length &&
+    !available().length
+  ) {
+    <p>{{ i18n.t('All eligible categories already have a budget for this month.') }}</p>
+  }
+  <section class="panel">
+    <h2>{{ i18n.t('Monthly budgets') }}</h2>
+    @if (loading()) {
+      <p role="status">{{ i18n.t('Loading budgets…') }}</p>
+    } @else if (!month()) {
+      <p>{{ i18n.t('Choose a month.') }}</p>
+    } @else if (!rows().length && !loadError()) {
+      <p class="empty">{{ i18n.t('No budgets for this month.') }}</p>
+    }
+    @for (row of rows(); track row.id) {
+      <article class="budget-row">
+        <div class="budget-head">
+          <div>
+            <h3>{{ row.categoryName }}</h3>
+            @if (row.categoryStatus === 'archived') {
+              <p class="sub">{{ i18n.t('archived') }}</p>
+            }
+          </div>
+          <div class="actions">
+            <button
+              class="btn"
+              type="button"
+              [attr.aria-label]="i18n.t('Edit budget') + ' ' + row.categoryName"
+              [disabled]="busy()"
+              (click)="start($event, row)"
+            >
+              {{ i18n.t('Edit') }}</button><button
+              class="btn"
+              type="button"
+              [attr.aria-label]="i18n.t('Delete budget') + ' ' + row.categoryName"
+              [disabled]="busy()"
+              (click)="remove(row)"
+            >
+              {{ i18n.t('Delete') }}
+            </button>
+          </div>
+        </div>
+        <p>
+          {{ i18n.t(row.missingFxCount ? 'Known spending subtotal' : 'Spent') }}:
+          <strong>{{ money(row.actualMinor) }}</strong> / {{ money(row.limitMinor) }}
+        </p>
+        @if (row.missingFxCount) {
+          <p class="incomplete" role="status">
+            {{ i18n.t('Incomplete: some transactions have no exchange rate.') }} ({{
+              row.missingFxCount
+            }})
+          </p>
+        } @else {
+          @if (row.utilizationBasisPoints !== null) {
+            <p>{{ i18n.t('Used') }}: {{ percent(row.utilizationBasisPoints) }}</p>
+            <div
+              class="track"
+              role="progressbar"
+              [attr.aria-label]="row.categoryName + ' ' + i18n.t('budget progress')"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              [attr.aria-valuenow]="progress(row.utilizationBasisPoints)"
+              [attr.aria-valuetext]="percent(row.utilizationBasisPoints)"
+            >
+              <span [style.width.%]="progress(row.utilizationBasisPoints)"></span>
+            </div>
+          } @else {
+            <p>{{ i18n.t('No percentage for a zero limit.') }}</p>
+          }
+          @if (row.overspentMinor !== null && row.overspentMinor !== '0') {
+            <p>{{ money(row.overspentMinor) }} {{ i18n.t('over budget') }}</p>
+          } @else if (row.remainingMinor !== null) {
+            <p>{{ money(row.remainingMinor) }} {{ i18n.t('remaining') }}</p>
+          }
+        }
+      </article>
+    }
+  </section>
+}
+<dialog
+  #dialog
+  class="creation-dialog"
+  aria-labelledby="budget-dialog-heading"
+  (cancel)="close($event)"
+  (keydown)="containFocus($event)"
+>
+  <div class="dialogbody">
+    <div class="detail-head">
+      <h2 id="budget-dialog-heading" tabindex="-1" autofocus>
+        {{ i18n.t(editing() ? 'Edit budget' : 'Add budget') }}
+      </h2>
+      <button class="btn" type="button" [disabled]="busy()" (click)="close()">
+        {{ i18n.t('Close') }}
+      </button>
+    </div>
+    @if (error()) {
+      <div class="alert" role="alert">{{ i18n.t(error()) }}</div>
+    }
+    <form [formGroup]="form" (ngSubmit)="save()" class="entry-form">
+      @if (editing(); as row) {
+        <p>{{ i18n.t('Category') }}: {{ row.categoryName }}</p>
+      } @else {
+        <div class="form-field">
+          <label for="budget-category">{{ i18n.t('Category') }}</label><select
+            id="budget-category"
+            class="field"
+            formControlName="categoryId"
+          >
+            @for (c of available(); track c.id) {
+              <option [value]="c.id">{{ c.name }}</option>
+            }
+          </select>
+        </div>
+      }
+      <label
+        >{{ i18n.t('Monthly limit')
+        }}<input class="field" formControlName="amount" inputmode="decimal" required
+      /></label>
+      <p class="sub">RSD</p>
+      <div class="actions">
+        <button class="btn primary" type="submit" [disabled]="busy()">
+          {{ i18n.t(busy() ? 'Saving…' : 'Save') }}</button><button
+          class="btn"
+          type="button"
+          [disabled]="busy()"
+          (click)="close()"
+        >
+          {{ i18n.t('Cancel') }}
+        </button>
+      </div>
+    </form>
+  </div>
+</dialog>
