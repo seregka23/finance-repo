@@ -22,6 +22,7 @@ import {
   validateMonth,
 } from '../finance/calendar.js';
 import { parseMinor } from '../finance/money.js';
+import { recordedValue } from '../finance/report-valuation.js';
 import { HouseholdAccessService } from '../households/household-access.service.js';
 
 const invalid = () => apiError(400, 'INVALID_INPUT', 'Invalid input');
@@ -96,14 +97,16 @@ export function summarizePlans(rows: PlanRow[]): Plan[] {
       plans.set(row.id, p);
     }
     if (!row.movementId) continue;
-    const value =
-      row.currency === 'RSD' ? row.amountMinor : row.rsdEquivalentMinor;
-    if (
-      row.currency !== 'RSD' &&
-      (row.rsdEquivalentMinor === null || row.exchangeRate === null)
-    )
-      p.missing++;
-    if (value !== null) p.actual -= BigInt(value);
+    if (row.currency === null || row.amountMinor === null)
+      throw new Error('Invalid movement');
+    const value = recordedValue({
+      currency: row.currency,
+      amountMinor: row.amountMinor,
+      rsdEquivalentMinor: row.rsdEquivalentMinor,
+      exchangeRate: row.exchangeRate,
+    });
+    if (value.missing) p.missing++;
+    if (value.rsd !== null) p.actual -= value.rsd;
   }
   return Array.from(plans.values(), ({ row, actual, missing }) => {
     const limit = BigInt(row.limitMinor),

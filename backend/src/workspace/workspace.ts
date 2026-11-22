@@ -60,7 +60,7 @@ export class WorkspaceService {
         imports: false,
         budgets: true,
         reserves: true,
-        reports: false,
+        reports: true,
       },
     };
   }

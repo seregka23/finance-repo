@@ -444,4 +444,25 @@ export const sr: Record<Message, string> = {
   'This budget is linked to other records and cannot be deleted.':
     'Budžet je povezan sa drugim zapisima i ne može se obrisati.',
   'Budget categories are unavailable.': 'Kategorije budžeta nisu dostupne.',
+  'Balances are not affected by report filters.': 'Filteri izveštaja ne utiču na stanja.',
+  'Balances at month end': 'Stanja na kraju meseca',
+  'Cash flow': 'Novčani tok',
+  'Cash flow by original currency': 'Novčani tok po originalnoj valuti',
+  'Categories could not be loaded.': 'Kategorije nije moguće učitati.',
+  Expenses: 'Troškovi',
+  'Incomplete known subtotal; missing exchange rates:':
+    'Nepotpuni poznati iznos; nedostaju kursevi:',
+  'Net cash flow': 'Neto novčani tok',
+  'No breakdown for this selection.': 'Nema razrade za izabrane filtere.',
+  'No cash flow for this selection.': 'Nema novčanog toka za izabrane filtere.',
+  'No merchant': 'Bez prodavca',
+  'No transactions in this month.': 'Nema transakcija u ovom mesecu.',
+  'No transactions match these filters.': 'Nema transakcija koje odgovaraju filterima.',
+  'RSD values are incomplete known subtotals; missing exchange rates:':
+    'Iznosi u RSD su nepotpuni; nedostaju kursevi:',
+  'Spending by category': 'Potrošnja po kategoriji',
+  'Spending by merchant': 'Potrošnja po prodavcu',
+  'Unknown category': 'Nepoznata kategorija',
+  'View all transactions': 'Sve transakcije',
+  'Choose a valid month.': 'Izaberite ispravan mesec.',
 };

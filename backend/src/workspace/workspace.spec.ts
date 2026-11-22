@@ -31,7 +31,7 @@ describe('workspace summary', () => {
         imports: false,
         budgets: true,
         reserves: true,
-        reports: false,
+        reports: true,
       },
     });
     const sql = prepare.mock.calls[0][0] as string;

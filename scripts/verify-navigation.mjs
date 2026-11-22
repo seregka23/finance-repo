@@ -172,7 +172,12 @@ async function run() {
       await page.getByText("Household created.", { exact: true }).waitFor();
       await navigate("Dashboard");
       await page.getByText("No transactions yet.", { exact: true }).waitFor();
-      assert.match(await page.locator(".amount").innerText(), /0\.00\s+RSD/);
+      assert.ok(
+        await page
+          .getByText(/0\.00\s+RSD/)
+          .first()
+          .isVisible(),
+      );
     },
   );
   for (const [size, width, height] of [
@@ -366,7 +371,8 @@ async function run() {
       const held = new Promise((resolve) => {
         release = resolve;
       });
-      await page.route("**/workspace", async (route) => {
+      const reports = "**/reports/monthly*";
+      await page.route(reports, async (route) => {
         await held;
         await route.continue();
       });
@@ -375,10 +381,12 @@ async function run() {
       assert.equal(await page.locator(".empty").count(), 0);
       release();
       await reload;
-      await page.getByText(/No transactions yet\. Reports/).waitFor();
-      await page.unroute("**/workspace");
+      await page
+        .getByText(/No transactions (yet|(?:in|for) (this|the selected) month)/)
+        .waitFor();
+      await page.unroute(reports);
       let fail = true;
-      await page.route("**/workspace", async (route) => {
+      await page.route(reports, async (route) => {
         if (fail)
           await route.fulfill({
             status: 503,
@@ -400,8 +408,10 @@ async function run() {
       assert.equal(await page.locator(".empty").count(), 0);
       fail = false;
       await page.getByRole("button", { name: "Retry", exact: true }).click();
-      await page.getByText(/No transactions yet\. Reports/).waitFor();
-      await page.unroute("**/workspace");
+      await page
+        .getByText(/No transactions (yet|(?:in|for) (this|the selected) month)/)
+        .waitFor();
+      await page.unroute(reports);
     },
   );
   await check(
@@ -1009,6 +1019,139 @@ async function run() {
       await page
         .getByText(category.name, { exact: true })
         .waitFor({ state: "hidden" });
+    },
+  );
+  await check(
+    "dashboard activity and monthly report filters at 320px",
+    async () => {
+      const householdId = await page
+        .getByLabel("Household", { exact: true })
+        .inputValue();
+      const path = `/households/${householdId}`;
+      const { month } = await api(
+        `${path}/reports/monthly`,
+        "GET",
+        undefined,
+        200,
+      );
+      const account = await api(
+        `${path}/accounts`,
+        "POST",
+        {
+          name: "Report browser cash",
+          type: "cash",
+          currency: "RSD",
+          ownerMemberId: null,
+          designation: "personal",
+          openingBalanceMinor: "90000",
+          openingDate: `${month}-01`,
+        },
+        201,
+      );
+      const category = await api(
+        `${path}/categories`,
+        "POST",
+        { name: "Report browser category", type: "expense" },
+        201,
+      );
+      const merchant = "Monthly report café";
+      await api(
+        `${path}/transactions`,
+        "POST",
+        {
+          type: "expense",
+          transactionDate: `${month}-02`,
+          accountId: account.id,
+          categoryId: category.id,
+          currency: "RSD",
+          amountMinor: "1199",
+          merchant,
+        },
+        201,
+        { "Idempotency-Key": "browser-report-expense" },
+      );
+      const destination = await api(
+        `${path}/accounts`,
+        "POST",
+        {
+          name: "Report browser euros",
+          type: "cash",
+          currency: "EUR",
+          ownerMemberId: null,
+          designation: "personal",
+          openingBalanceMinor: "0",
+          openingDate: `${month}-01`,
+        },
+        201,
+      );
+      await api(
+        `${path}/transactions`,
+        "POST",
+        {
+          type: "transfer",
+          transactionDate: `${month}-02`,
+          fromAccountId: account.id,
+          toAccountId: destination.id,
+          debitCurrency: "RSD",
+          creditCurrency: "EUR",
+          debitAmountMinor: "12000",
+          creditAmountMinor: "100",
+        },
+        201,
+        { "Idempotency-Key": "browser-report-transfer" },
+      );
+      await page.setViewportSize({ width: 320, height: 740 });
+      await navigate("Dashboard");
+      await page.getByText(merchant, { exact: true }).waitFor();
+      await page
+        .getByText(/Report browser cash\s*→\s*Report browser euros/)
+        .waitFor();
+      await axe(page, "320px populated dashboard");
+      await screenshot(page, "dashboard-activity");
+      await page.getByRole("link", { name: /view.*transactions/i }).click();
+      await page.waitForURL("**/transactions");
+      await navigate("Reports");
+      const picker = page.getByLabel("Month", { exact: true });
+      await page.waitForFunction(() =>
+        Boolean(document.querySelector('input[type="month"]')?.value),
+      );
+      const filter = page.getByLabel(/^Merchant/);
+      await filter.fill("missing merchant 100%_");
+      await page.getByRole("button", { name: /apply filters/i }).click();
+      await page.getByText(/No transactions match/).waitFor();
+      await page.getByRole("button", { name: /reset filters/i }).click();
+      await page.getByText(merchant, { exact: true }).waitFor();
+      await picker.fill("2025-10");
+      await page.getByRole("button", { name: /apply filters/i }).click();
+      await page
+        .getByText(/incomplete/i)
+        .first()
+        .waitFor();
+      const amountsRemainOnOneLine = await page
+        .locator(".breakdown-row > strong")
+        .evaluateAll(
+          (amounts) =>
+            amounts.length > 0 &&
+            amounts.every((amount) => {
+              const range = document.createRange();
+              range.selectNodeContents(amount);
+              return (
+                new Set(Array.from(range.getClientRects(), ({ top }) => top))
+                  .size === 1
+              );
+            }),
+        );
+      assert.ok(
+        amountsRemainOnOneLine,
+        "breakdown amounts should stay legible on one line",
+      );
+      await axe(page, "320px incomplete monthly report");
+      await screenshot(page, "monthly-report-incomplete");
+      assert.ok(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
     },
   );
   assert.deepEqual(pageErrors, [], "browser page errors");

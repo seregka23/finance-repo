@@ -110,7 +110,25 @@ describe('financial navigation and transaction chooser', () => {
       ],
     });
     api.selectedId.set('one');
-    vi.spyOn(api, 'request').mockResolvedValue(data(0));
+    vi.spyOn(api, 'request').mockImplementation(
+      (path) =>
+        Promise.resolve(
+          path.endsWith('/dashboard')
+            ? {
+                month: '2026-11',
+                totals: {
+                  incomeMinor: '0',
+                  expenseMinor: '0',
+                  netMinor: '0',
+                  missingFxCount: 0,
+                  originalCurrencies: [],
+                },
+                balances: [],
+                recentTransactions: [],
+              }
+            : data(0),
+        ) as never,
+    );
     const fixture = TestBed.createComponent(Finance);
     fixture.detectChanges();
     await fixture.whenStable();

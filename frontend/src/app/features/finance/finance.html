@@ -3,7 +3,7 @@
     <h1 tabindex="-1">{{ i18n.t(page) }}</h1>
     <p>{{ i18n.t('Your household finances, in one place.') }}</p>
   </div>
-  @if ((page === 'Dashboard' || page === 'Transactions') && household()) {
+  @if (page === 'Dashboard' && household()) {
     <button class="btn primary" type="button" (click)="open($event)">
       {{ i18n.t('Add transaction') }}
     </button>
@@ -15,186 +15,225 @@
     <p class="sub">{{ i18n.t('Create a household to start managing your finances together.') }}</p>
     <a class="btn primary" routerLink="/settings">{{ i18n.t('Create household') }}</a>
   </section>
-} @else if (workspace.loading()) {
-  <p role="status">{{ i18n.t('Loading {page}…', { page: i18n.t(page) }) }}</p>
-} @else if (workspace.error()) {
-  <div class="alert" role="alert">
-    {{ i18n.t(workspace.error()) }}
-    <button class="textbtn" type="button" (click)="workspace.load()">{{ i18n.t('Retry') }}</button>
-  </div>
-} @else if (workspace.data(); as data) {
-  @switch (page) {
-    @case ('Dashboard') {
-      @if (
-        data.counts.accounts === 0 &&
-        data.counts.transactions === 0 &&
-        data.counts.accountMovements === 0
-      ) {
-        <section class="panel balance-panel">
-          <h2>{{ i18n.t('Household balance') }}</h2>
-          <p class="amount">
-            {{ zero(household()!.baseCurrency) }}
-          </p>
-          <p class="sub">{{ i18n.t('No accounts or activity yet.') }}</p>
-          <div class="cashflow">
-            <p>
-              {{ i18n.t('Income this month') }}
-              <strong>{{ zero(household()!.baseCurrency) }}</strong>
-            </p>
-            <p>
-              {{ i18n.t('Expenses this month') }}
-              <strong>{{ zero(household()!.baseCurrency) }}</strong>
-            </p>
-          </div>
-        </section>
-        <div class="cols workspace-cols">
-          <section class="panel">
-            <h2>{{ i18n.t('Get started') }}</h2>
-            <p class="sub">
-              {{ i18n.t('Add an account to begin organizing your household finances.') }}
-            </p>
-            <a class="btn" routerLink="/accounts" [queryParams]="{ create: 1 }">{{
-              i18n.t('Add account')
-            }}</a>
-          </section>
-          <section class="panel">
-            <h2>{{ i18n.t('Recent activity') }}</h2>
-            <app-results-state [message]="i18n.t('No transactions yet.')" />
-          </section>
-        </div>
-      } @else {
-        <section class="panel">
-          <h2>{{ i18n.t('Household overview') }}</h2>
-          <p class="sub">
-            {{
-              i18n.t(
-                '{accounts} accounts · {transactions} transactions · {movements} account movements',
-                {
-                  accounts: data.counts.accounts,
-                  transactions: data.counts.transactions,
-                  movements: data.counts.accountMovements,
-                }
-              )
-            }}
-          </p>
-          <p>
-            {{
-              i18n.t(
-                'Account balances and history are available on Accounts. Consolidated dashboard figures and reports are coming soon.'
-              )
-            }}
-          </p>
-        </section>
+} @else {
+  @if (page === 'Reports') {
+    <form class="filters panel" [formGroup]="filters" (ngSubmit)="apply()">
+      <label for="report-month"
+        >{{ i18n.t('Month')
+        }}<input id="report-month" class="field" type="month" formControlName="month" required
+      /></label>
+      <div class="filter-field">
+        <label for="report-category">{{ i18n.t('Category') }}</label
+        ><select id="report-category" class="field" formControlName="categoryId">
+          <option value="">{{ i18n.t('All categories') }}</option>
+          @for (c of categories(); track c.id) {
+            <option [value]="c.id">
+              {{ c.name }}
+              @if (c.status === 'archived') {
+                ({{ i18n.t('archived') }})
+              }
+            </option>
+          }
+        </select>
+      </div>
+      <label for="report-merchant"
+        >{{ i18n.t('Merchant')
+        }}<input id="report-merchant" class="field" formControlName="merchant" maxlength="200"
+      /></label>
+      <div class="filter-actions">
+        <button class="btn primary" type="submit">{{ i18n.t('Apply filters') }}</button
+        ><button class="btn" type="button" (click)="reset()">{{ i18n.t('Reset filters') }}</button>
+      </div>
+      @if (categoryError()) {
+        <p role="status">
+          {{ i18n.t('Categories could not be loaded.') }}
+          <button class="textbtn" type="button" (click)="retryCategories()">
+            {{ i18n.t('Retry') }}
+          </button>
+        </p>
       }
-    }
-    @case ('Accounts') {
-      <section class="panel">
-        <h2>{{ i18n.t('Accounts') }}</h2>
-        @if (data.counts.accounts === 0) {
-          <p class="empty">
-            {{
-              i18n.t('No accounts yet. Add an account when account management becomes available.')
-            }}
-          </p>
-        } @else {
-          <p class="sub">
-            {{
-              i18n.t('{count} saved accounts. Account details are coming soon.', {
-                count: data.counts.accounts,
-              })
-            }}
-          </p>
+    </form>
+  }
+  @if (reportLoading()) {
+    <p role="status">{{ i18n.t('Loading {page}…', { page: i18n.t(page) }) }}</p>
+  } @else if (reportError()) {
+    <div class="alert" role="alert">
+      {{ i18n.t(reportError()) }}
+      <button class="textbtn" type="button" (click)="retryReport()">{{ i18n.t('Retry') }}</button>
+    </div>
+  }
+  @if (page === 'Dashboard') {
+    @if (dashboard(); as d) {
+      <section class="panel balance-panel">
+        <h2>{{ i18n.t('Household balance') }}</h2>
+        @if (!d.balances.length) {
+          <p class="amount">{{ zero(household()!.baseCurrency) }}</p>
+          <p class="sub">{{ i18n.t('No accounts or activity yet.') }}</p>
         }
-        <a class="btn primary" routerLink="/accounts" [queryParams]="{ create: 1 }">{{
+        <div class="balance-grid">
+          @for (b of d.balances; track b.currency) {
+            <div>
+              <h3>{{ b.currency }}</h3>
+              <strong>{{ money(b.balanceMinor, b.currency) }}</strong>
+              <p>{{ i18n.t('Available') }}: {{ money(b.availableMinor, b.currency) }}</p>
+              <p>{{ i18n.t('Reserved') }}: {{ money(b.reservedMinor, b.currency) }}</p>
+            </div>
+          }
+        </div>
+        <a class="btn" routerLink="/accounts" [queryParams]="{ create: 1 }">{{
           i18n.t('Add account')
         }}</a>
       </section>
-    }
-    @case ('Transactions') {
       <section class="panel">
-        <h2>{{ i18n.t('Transactions') }}</h2>
-        @if (data.counts.accounts === 0) {
-          <p class="empty">
-            {{ i18n.t('Start by adding an account before recording transactions.') }}
+        <h2>{{ i18n.t('Cash flow') }} · {{ monthTitle(d.month) }}</h2>
+        @if (d.totals.missingFxCount) {
+          <p class="notice" role="status">
+            {{ i18n.t('RSD values are incomplete known subtotals; missing exchange rates:') }}
+            {{ d.totals.missingFxCount }}
           </p>
-          <a class="btn" routerLink="/accounts">{{ i18n.t('Go to accounts') }}</a>
-        } @else if (data.counts.transactions === 0) {
-          <app-results-state [message]="i18n.t('No transactions yet.')" />
-        } @else {
-          <p class="sub">
-            {{
-              i18n.t('{count} saved transactions. Transaction details are coming soon.', {
-                count: data.counts.transactions,
-              })
-            }}
+        }
+        <div class="flow-grid">
+          <p>
+            {{ i18n.t('Income this month')
+            }}<strong>{{ money(d.totals.incomeMinor, 'RSD') }}</strong>
           </p>
+          <p>
+            {{ i18n.t('Expenses this month')
+            }}<strong>{{ money(d.totals.expenseMinor, 'RSD') }}</strong>
+          </p>
+          <p>
+            {{ i18n.t('Net cash flow') }}<strong>{{ money(d.totals.netMinor, 'RSD') }}</strong>
+          </p>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="section-head">
+          <h2>{{ i18n.t('Recent activity') }}</h2>
+          <a routerLink="/transactions">{{ i18n.t('View all transactions') }}</a>
+        </div>
+        @if (!d.recentTransactions.length) {
+          <p class="empty">{{ i18n.t('No transactions yet.') }}</p>
+        }
+        @for (t of d.recentTransactions; track t.id) {
+          <div class="activity-row">
+            <div>
+              <strong>{{ t.merchant || t.categoryName || i18n.t(t.type) }}</strong>
+              <p class="sub">
+                {{ date(t.transactionDate) }} · {{ i18n.t(t.type) }} · {{ t.accountName || '—' }}
+                @if (t.type === 'transfer') {
+                  → {{ t.toAccountName || '—' }}
+                } @else if (t.categoryName && t.merchant) {
+                  · {{ t.categoryName }}
+                }
+              </p>
+            </div>
+            <strong
+              >{{ money(t.amountMinor, t.currency) }}
+              @if (t.type === 'transfer') {
+                → {{ money(t.creditAmountMinor, t.creditCurrency) }}
+              }
+            </strong>
+          </div>
         }
       </section>
     }
-    @case ('Budgets') {
+  }
+  @if (page === 'Reports') {
+    @if (report(); as r) {
+      @if (!r.monthTransactionCount) {
+        <p class="notice">{{ i18n.t('No transactions in this month.') }}</p>
+      } @else if (!r.matchedTransactionCount && applied()) {
+        <p class="notice">{{ i18n.t('No transactions match these filters.') }}</p>
+      }
       <section class="panel">
-        <h2>{{ i18n.t('{month} budget', { month: month() }) }}</h2>
-        @if (data.counts.plans === 0) {
-          <p class="empty">{{ i18n.t('No budget plans yet for this household.') }}</p>
-        } @else {
-          <p class="sub">
-            {{
-              i18n.t('{count} saved plans. Budget details are coming soon.', {
-                count: data.counts.plans,
-              })
-            }}
+        <h2>{{ i18n.t('Cash flow') }} · {{ monthTitle(r.month) }}</h2>
+        @if (r.totals.missingFxCount) {
+          <p class="notice" role="status">
+            {{ i18n.t('RSD values are incomplete known subtotals; missing exchange rates:') }}
+            {{ r.totals.missingFxCount }}
           </p>
         }
-        <button class="btn primary" type="button" disabled aria-describedby="budget-reason">
-          {{ i18n.t('Add budget') }}
-        </button>
-        <p class="hint" id="budget-reason">{{ i18n.t('Budget management is coming soon.') }}</p>
-      </section>
-    }
-    @case ('Reserves') {
-      <section class="panel">
-        <h2>{{ i18n.t('Reserves') }}</h2>
-        @if (data.counts.accounts === 0) {
-          <p class="empty">{{ i18n.t('Add an account to start planning reserves.') }}</p>
-          <a class="btn" routerLink="/accounts">{{ i18n.t('Go to accounts') }}</a>
-        } @else if (data.counts.reserves === 0) {
-          <p class="empty">{{ i18n.t('No reserves yet.') }}</p>
-        } @else {
-          <p class="sub">
-            {{
-              i18n.t('{count} saved reserves. Reserve details are coming soon.', {
-                count: data.counts.reserves,
-              })
-            }}
+        <div class="flow-grid">
+          <p>
+            {{ i18n.t('Income') }}<strong>{{ money(r.totals.incomeMinor, 'RSD') }}</strong>
           </p>
+          <p>
+            {{ i18n.t('Expenses') }}<strong>{{ money(r.totals.expenseMinor, 'RSD') }}</strong>
+          </p>
+          <p>
+            {{ i18n.t('Net cash flow') }}<strong>{{ money(r.totals.netMinor, 'RSD') }}</strong>
+          </p>
+        </div>
+        <h3>{{ i18n.t('Cash flow by original currency') }}</h3>
+        @if (!r.totals.originalCurrencies.length) {
+          <p class="sub">{{ i18n.t('No cash flow for this selection.') }}</p>
         }
-        <button class="btn primary" type="button" disabled aria-describedby="reserve-reason">
-          {{ i18n.t('Create reserve') }}
-        </button>
-        <p class="hint" id="reserve-reason">{{ i18n.t('Reserve management is coming soon.') }}</p>
-      </section>
-    }
-    @case ('Reports') {
-      <section class="panel">
-        <h2>{{ i18n.t('Reports') }}</h2>
-        @if (data.counts.transactions === 0) {
-          <p class="empty">
-            {{
-              i18n.t(
-                'No transactions yet. Reports will help you understand your activity once transactions are available.'
-              )
-            }}
-          </p>
-        } @else {
-          <p class="sub">
-            {{
-              i18n.t('{count} saved transactions. Reports are coming soon.', {
-                count: data.counts.transactions,
-              })
-            }}
-          </p>
+        @for (f of r.totals.originalCurrencies; track f.currency) {
+          <div class="summary-row">
+            <strong>{{ f.currency }}</strong
+            ><span>{{ i18n.t('Income') }}: {{ money(f.incomeMinor, f.currency) }}</span
+            ><span>{{ i18n.t('Expenses') }}: {{ money(f.expenseMinor, f.currency) }}</span
+            ><span>{{ i18n.t('Net cash flow') }}: {{ money(f.netMinor, f.currency) }}</span>
+          </div>
         }
       </section>
+      <section class="panel">
+        <h2>{{ i18n.t('Balances at month end') }}</h2>
+        <p class="sub">{{ i18n.t('Balances are not affected by report filters.') }}</p>
+        @if (!r.balances.length) {
+          <p>{{ zero(household()!.baseCurrency) }}</p>
+        }
+        @for (b of r.balances; track b.currency) {
+          <div class="summary-row">
+            <strong>{{ b.currency }}</strong
+            ><span>{{ i18n.t('Balance') }}: {{ money(b.balanceMinor, b.currency) }}</span
+            ><span>{{ i18n.t('Available') }}: {{ money(b.availableMinor, b.currency) }}</span
+            ><span>{{ i18n.t('Reserved') }}: {{ money(b.reservedMinor, b.currency) }}</span>
+          </div>
+        }
+      </section>
+      <div class="report-grid">
+        <section class="panel">
+          <h2>{{ i18n.t('Spending by category') }}</h2>
+          @if (!r.byCategory.length) {
+            <p class="empty">{{ i18n.t('No breakdown for this selection.') }}</p>
+          }
+          @for (item of r.byCategory; track item.categoryId) {
+            <div class="breakdown-row">
+              <div>
+                {{ item.name || i18n.t('Unknown category') }}
+                @if (item.missingFxCount) {
+                  <p class="sub">
+                    {{ i18n.t('Incomplete known subtotal; missing exchange rates:') }}
+                    {{ item.missingFxCount }}
+                  </p>
+                }
+              </div>
+              <strong>{{ money(item.expenseMinor, 'RSD') }}</strong>
+            </div>
+          }
+        </section>
+        <section class="panel">
+          <h2>{{ i18n.t('Spending by merchant') }}</h2>
+          @if (!r.byMerchant.length) {
+            <p class="empty">{{ i18n.t('No breakdown for this selection.') }}</p>
+          }
+          @for (item of r.byMerchant; track $index) {
+            <div class="breakdown-row">
+              <div>
+                {{ item.name || i18n.t('No merchant') }}
+                @if (item.missingFxCount) {
+                  <p class="sub">
+                    {{ i18n.t('Incomplete known subtotal; missing exchange rates:') }}
+                    {{ item.missingFxCount }}
+                  </p>
+                }
+              </div>
+              <strong>{{ money(item.expenseMinor, 'RSD') }}</strong>
+            </div>
+          }
+        </section>
+      </div>
     }
   }
 }

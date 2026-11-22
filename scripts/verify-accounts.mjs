@@ -1001,6 +1001,9 @@ async function verify() {
       const a = await create(
         input("Budget account", "1500000", { openingDate: `${month}-01` }),
       );
+      const reports = `/api/v1/households/${h}/reports/monthly`;
+      const report = (target, filter = "") =>
+        api(`${reports}?month=${target}${filter}`, member);
       const b = await create(input("Budget transfer destination", "0"));
       const travel = await api(`/api/v1/households/${h}/categories`, owner, {
         method: "POST",
@@ -1051,7 +1054,7 @@ async function verify() {
         categoryId: travel.id,
         currency: "RSD",
         amountMinor: "200000",
-        merchant: null,
+        merchant: "Market 100%_",
         note: null,
         exchangeRate: null,
         exchangeRateSource: null,
@@ -1081,6 +1084,18 @@ async function verify() {
       }
       await figures(month, ["200000", "800000", "0", "2000", 0]);
       await figures(nextMonth, ["0", "0", "0", null, 0]);
+      const salary = await api(`/api/v1/households/${h}/categories`, owner, {
+        method: "POST",
+        status: 201,
+        body: { type: "income", name: "Report salary" },
+      });
+      await postTransaction({
+        ...expense,
+        type: "income",
+        categoryId: salary.id,
+        amountMinor: "50000",
+        merchant: null,
+      });
       const transfer = await postTransaction({
         type: "transfer",
         transactionDate: `${month}-05`,
@@ -1093,6 +1108,41 @@ async function verify() {
         fee: { amountMinor: "1000", categoryId: travel.id },
       });
       await figures(month, ["201000", "799000", "0", "2010", 0]);
+      const withFee = await report(month);
+      assert.equal(withFee.monthTransactionCount, 4);
+      assert.equal(withFee.totals.incomeMinor, "50000");
+      assert.equal(withFee.totals.expenseMinor, "201000");
+      assert.equal(withFee.totals.netMinor, "-151000");
+      assert.equal(
+        withFee.byCategory.find((x) => x.categoryId === travel.id).expenseMinor,
+        "201000",
+      );
+      assert.equal(
+        withFee.balances.find((x) => x.currency === "RSD").balanceMinor,
+        "1349000",
+      );
+      const filtered = await report(month, "&merchant=market%20100%25_");
+      assert.equal(filtered.matchedTransactionCount, 1);
+      assert.equal(filtered.totals.expenseMinor, "200000");
+      assert.equal(
+        filtered.byMerchant.find((x) => x.name === expense.merchant)
+          .expenseMinor,
+        "200000",
+      );
+      assert.deepEqual(filtered.balances, withFee.balances);
+      const unmatched = await report(month, "&merchant=no-such-merchant");
+      assert.equal(unmatched.monthTransactionCount, 4);
+      assert.equal(unmatched.matchedTransactionCount, 0);
+      assert.equal(unmatched.totals.expenseMinor, "0");
+      const categoryOnly = await report(
+        month,
+        `&categoryId=${encodeURIComponent(travel.id)}`,
+      );
+      assert.equal(categoryOnly.totals.expenseMinor, "201000");
+      assert.equal(categoryOnly.totals.incomeMinor, "0");
+      assert.equal((await report("2024-01")).monthTransactionCount, 0);
+      await api(`${reports}?month=2025-13`, owner, { status: 400 });
+      await api(reports, stranger, { status: 404 });
       await voidTransaction(transfer);
       const adjusted = await api(`${transactionPath}/${spent.id}`, owner, {
         method: "PATCH",
@@ -1108,6 +1158,14 @@ async function verify() {
       });
       await figures(month, ["1100000", "-100000", "100000", "11000", 0]);
       await figures(nextMonth, ["-10000", "10000", "0", null, 0]);
+      const creditMonth = await report(nextMonth);
+      assert.equal(creditMonth.totals.expenseMinor, "-10000");
+      assert.equal(creditMonth.totals.netMinor, "10000");
+      assert.equal(
+        creditMonth.byMerchant.find((x) => x.name === expense.merchant)
+          .expenseMinor,
+        "-10000",
+      );
       await api(`${path}/${nextPlan.id}`, owner, {
         method: "PATCH",
         body: { limitMinor: "20000" },
@@ -1133,9 +1191,86 @@ async function verify() {
         amountMinor: "1234",
       });
       await figures(month, ["1234", null, null, null, 1]);
+      const partial = await report(month);
+      assert.equal(partial.totals.expenseMinor, "1234");
+      assert.equal(partial.totals.missingFxCount, 1);
+      assert.equal(
+        partial.totals.originalCurrencies.find((x) => x.currency === "EUR")
+          .expenseMinor,
+        "500",
+      );
+      assert.equal(
+        partial.byCategory.find((x) => x.categoryId === travel.id)
+          .missingFxCount,
+        1,
+      );
       await voidTransaction(recorded);
       await api(`${path}/${plan.id}`, owner, { method: "DELETE", status: 204 });
       assert.deepEqual((await api(`${path}?month=${month}`, owner)).plans, []);
+    },
+  );
+  await check(
+    "dashboard shares monthly aggregates and returns 15 stable recent transactions",
+    async () => {
+      const route = `/api/v1/households/${h}`;
+      const firstRead = await api(`${route}/dashboard`, member);
+      const ownAccount = await create(
+        input("Recent activity cash", "2000", {
+          openingDate: `${firstRead.month}-01`,
+        }),
+      );
+      const currentDate = `${firstRead.month}-01`;
+      for (let index = 0; index < 16; index++) {
+        await postTransaction({
+          type: "expense",
+          transactionDate: currentDate,
+          accountId: ownAccount.id,
+          categoryId: category.id,
+          currency: "RSD",
+          amountMinor: "1",
+          merchant: `Recent ${index}`,
+        });
+      }
+      const fund = await createReserve(ownAccount, "Recent activity reserve");
+      await moveReserve(fund, "allocation", "1000");
+      const dashboard = await api(`${route}/dashboard`, member);
+      const report = await api(`${route}/reports/monthly`, member);
+      assert.equal(dashboard.month, report.month);
+      assert.deepEqual(dashboard.totals, report.totals);
+      const expected = await query(
+        `SELECT id FROM transactions WHERE household_id=${quote(h)} AND status='posted' ORDER BY transaction_date DESC, id DESC LIMIT 15`,
+      );
+      assert.equal(dashboard.recentTransactions.length, 15);
+      assert.deepEqual(
+        dashboard.recentTransactions.map(({ id }) => id),
+        expected.map(({ id }) => id),
+      );
+      assert.equal(
+        dashboard.recentTransactions[0].accountName,
+        ownAccount.name,
+      );
+      assert.equal(dashboard.recentTransactions[0].amountMinor, "1");
+      const previousRsd = firstRead.balances.find((x) => x.currency === "RSD");
+      const currentRsd = dashboard.balances.find((x) => x.currency === "RSD");
+      assert.equal(
+        BigInt(currentRsd.reservedMinor) - BigInt(previousRsd.reservedMinor),
+        1000n,
+      );
+      assert.equal(
+        BigInt(currentRsd.balanceMinor) - BigInt(previousRsd.balanceMinor),
+        1984n,
+      );
+      for (const {
+        balanceMinor,
+        reservedMinor,
+        availableMinor,
+      } of dashboard.balances) {
+        assert.equal(
+          BigInt(balanceMinor) - BigInt(reservedMinor),
+          BigInt(availableMinor),
+        );
+      }
+      await api(`${route}/dashboard`, stranger, { status: 404 });
     },
   );
   await check(
