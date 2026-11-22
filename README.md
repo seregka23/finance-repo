@@ -399,6 +399,12 @@ adjustments, currency locking, archive/restore and movement history. See the
 Run `npm run verify:accounts` for disposable local D1 API checks after building;
 `node scripts/verify-accounts-ui.mjs` exercises the actual UI in Chromium.
 
+## Transaction CSV export
+
+Use **Export CSV** on the Transactions page to download all rows that match
+the currently applied list filters. The export preserves original currencies,
+transfer legs and linked fees. See the [CSV contract](docs/api/transaction-export.md).
+
 ## Dashboard and reports
 
 The Dashboard shows balances by currency, monthly cash flow, and recent

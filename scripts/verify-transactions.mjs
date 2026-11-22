@@ -164,6 +164,25 @@ async function api(
     assert.equal(response.headers.get("cache-control"), "no-store");
   return value;
 }
+function readCsv(csv) {
+  const [columns, ...values] = csv
+    .slice(1, -2)
+    .split(/\r\n(?=(?:[^"]*"[^"]*")*[^"]*$)/u)
+    .map((row) =>
+      row
+        .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/u)
+        .map((cell) =>
+          cell.startsWith('"') ? cell.slice(1, -1).replaceAll('""', '"') : cell,
+        ),
+    );
+  return {
+    columns,
+    rows: values.map((row) => {
+      assert.equal(row.length, columns.length);
+      return Object.fromEntries(columns.map((key, index) => [key, row[index]]));
+    }),
+  };
+}
 async function prepare() {
   // SQL diagnostics exist only in this disposable local test Worker. All
   // financial requests pass through the production native-auth NestJS API.
@@ -309,6 +328,28 @@ async function verify() {
   });
   const householdId = household.id;
   const path = `/api/v1/households/${householdId}/transactions`;
+  const exportPath = path + "/export";
+  async function csvExport(params = {}, session = owner) {
+    const response = await fetch(
+      `${base}${exportPath}?${new URLSearchParams(params)}`,
+      {
+        headers: { Cookie: `finance_session=${session}` },
+        signal: AbortSignal.timeout(30000),
+      },
+    );
+    const bytes = await response.arrayBuffer();
+    const csv = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+    assert.equal(response.status, 200, csv);
+    assert.match(response.headers.get("content-type"), /^text\/csv\b/i);
+    assert.match(
+      response.headers.get("content-disposition"),
+      /^attachment;\s*filename="?transactions\.csv"?$/i,
+    );
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(csv[0], "\uFEFF");
+    assert.ok(csv.endsWith("\r\n"));
+    return readCsv(csv);
+  }
   const invitation = await api(
     `/api/v1/households/${householdId}/invitations`,
     owner,
@@ -943,6 +984,41 @@ async function verify() {
           })
         ).some((t) => t.id === transfer.fee.id),
       );
+      const matchedTransfer = (
+        await csvExport({
+          type: "transfer",
+          accountId: destination,
+          currency: "EUR",
+          ownerMemberId: memberId,
+          search: "Transfer filter",
+        })
+      ).rows;
+      assert.deepEqual(
+        matchedTransfer.map((row) => row.transaction_id),
+        [transfer.id],
+      );
+      assert.deepEqual(
+        [
+          matchedTransfer[0].amount_minor,
+          matchedTransfer[0].currency,
+          matchedTransfer[0].received_amount_minor,
+          matchedTransfer[0].received_currency,
+        ],
+        ["100", "RSD", "1", "EUR"],
+      );
+      const feeRows = (
+        await csvExport({
+          type: "fee",
+          accountId: primary,
+          categoryId: expense.id,
+        })
+      ).rows;
+      const fee = feeRows.find((row) => row.transaction_id === transfer.fee.id);
+      assert.deepEqual(
+        [fee.transfer_id, fee.rsd_equivalent_minor, fee.currency],
+        [transfer.id, "1", "RSD"],
+      );
+      assert.ok(feeRows.every((row) => row.type === "fee"));
     },
   );
   await check(
@@ -972,6 +1048,103 @@ async function verify() {
         [...first.transactions, ...last.transactions].map((row) => row.id),
         expected.sort().reverse(),
       );
+      params.delete("cursor");
+      params.delete("limit");
+      const exportResults = await csvExport(params);
+      assert.deepEqual(
+        exportResults.rows.map((row) => row.transaction_id),
+        expected,
+      );
+    },
+  );
+  await check(
+    "CSV download preserves text, prevents formula interpretation and rejects private exports",
+    async () => {
+      const special = await account("csv-eur", "100000", "EUR");
+      await query(
+        `UPDATE accounts SET name='+Cash, EUR' WHERE id=${quote(special)}`,
+      );
+      const category = await api(
+        `/api/v1/households/${householdId}/categories`,
+        owner,
+        {
+          method: "POST",
+          status: 201,
+          body: { name: "＠CSV test", type: "expense" },
+        },
+      );
+      const note = 'CSV %_ test, "quoted"\r\nСреда · sreda';
+      const saved = await post(
+        input(special, "125", {
+          categoryId: category.id,
+          currency: "EUR",
+          exchangeRate: "120",
+          exchangeRateSource: "manual",
+          merchant: "=2+3",
+          note,
+        }),
+      );
+      const filters = {
+        search: "CSV %_ test",
+        type: "expense",
+        accountId: special,
+        categoryId: category.id,
+        currency: "EUR",
+        status: "posted",
+      };
+      const { columns, rows } = await csvExport(filters, member);
+      assert.deepEqual(columns, [
+        "transaction_id",
+        "date",
+        "type",
+        "status",
+        "account",
+        "amount_minor",
+        "currency",
+        "category",
+        "merchant",
+        "note",
+        "rsd_equivalent_minor",
+        "to_account",
+        "received_amount_minor",
+        "received_currency",
+        "transfer_id",
+      ]);
+      assert.equal(rows.length, 1);
+      assert.deepEqual(rows[0], {
+        transaction_id: saved.id,
+        date: saved.transactionDate,
+        type: "expense",
+        status: "posted",
+        account: "'+Cash, EUR",
+        amount_minor: "125",
+        currency: "EUR",
+        category: "'＠CSV test",
+        merchant: "'=2+3",
+        note,
+        rsd_equivalent_minor: "15000",
+        to_account: "",
+        received_amount_minor: "",
+        received_currency: "",
+        transfer_id: "",
+      });
+      assert.deepEqual(
+        (await csvExport({ ...filters, search: "CSV no match" })).rows,
+        [],
+      );
+      for (const invalid of [
+        "limit=100",
+        "cursor=abcd",
+        "search=x&search=y",
+        "dateFrom=2026-12-01&dateTo=2026-01-01",
+      ]) {
+        await api(`${exportPath}?${invalid}`, owner, { status: 400 });
+      }
+      await api(exportPath, null, { status: 401 });
+      await api(exportPath, stranger, { status: 404 });
+      await api(`/api/v1/households/${other.id}/transactions/export`, owner, {
+        status: 404,
+      });
     },
   );
   await check(
@@ -983,6 +1156,7 @@ async function verify() {
       const before = await counts();
       await post(input(), "revoked-key", 404, member);
       await api(path, member, { status: 404 });
+      await api(exportPath, member, { status: 404 });
       assert.deepEqual(await counts(), before);
       assert.deepEqual(await query("PRAGMA foreign_key_check"), []);
     },

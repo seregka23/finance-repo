@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
@@ -610,6 +610,44 @@ async function run() {
         .getByRole("button", { name: "Apply filters", exact: true })
         .click();
       await page.getByRole("button", { name: merchant, exact: true }).waitFor();
+      const search = page.getByLabel("Search", { exact: true });
+      await search.fill("unapplied draft search");
+      const pendingExport = page.waitForRequest((request) =>
+        new URL(request.url()).pathname.endsWith("/transactions/export"),
+      );
+      const pendingDownload = page.waitForEvent("download");
+      await page
+        .getByRole("button", { name: "Export CSV", exact: true })
+        .click();
+      const exportRequest = await pendingExport;
+      const exportParams = new URL(exportRequest.url()).searchParams;
+      assert.equal(exportParams.get("search"), "100%_");
+      assert.equal(exportParams.has("cursor"), false);
+      assert.equal(exportParams.has("limit"), false);
+      const downloaded = await pendingDownload;
+      assert.equal(downloaded.suggestedFilename(), "transactions.csv");
+      const csv = await readFile(await downloaded.path(), "utf8");
+      assert.equal(csv[0], "\uFEFF");
+      assert.ok(csv.includes(merchant));
+      assert.equal(csv.trimEnd().split("\r\n").length, 2);
+      await search.fill("100%_");
+      const exportRoute = "**/transactions/export*";
+      await page.route(exportRoute, (route) =>
+        route.fulfill({
+          status: 413,
+          json: {
+            error: { code: "EXPORT_TOO_LARGE", message: "Export is too large" },
+          },
+        }),
+      );
+      await page
+        .getByRole("button", { name: "Export CSV", exact: true })
+        .click();
+      await page
+        .getByRole("alert")
+        .filter({ hasText: /narrow the filters/i })
+        .waitFor();
+      await page.unroute(exportRoute);
       assert.ok(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= innerWidth,

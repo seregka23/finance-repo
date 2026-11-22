@@ -42,6 +42,12 @@
   }
   <section class="panel">
     <h2>{{ i18n.t('Transactions') }}</h2>
+    <button class="btn" type="button" [disabled]="exporting() || loading()" (click)="exportCsv()">
+      {{ i18n.t(exporting() ? 'Exporting…' : 'Export CSV') }}
+    </button>
+    @if (exportError()) {
+      <div class="alert" role="alert">{{ i18n.t(exportError()) }}</div>
+    }
     <form [formGroup]="filters" (ngSubmit)="load()" class="filters">
       <label
         >{{ i18n.t('Search') }}<input class="field" formControlName="search" maxlength="200"

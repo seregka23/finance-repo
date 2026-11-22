@@ -11,6 +11,7 @@ import type {
   TransactionListOptions,
 } from './contracts.js';
 import { PostingRepository } from './posting.repository.js';
+import { CSV_HEADER, csvRow } from './csv-export.js';
 
 const invalid = () => apiError(400, 'INVALID_INPUT', 'Invalid input');
 const inputKeys = [
@@ -305,6 +306,62 @@ export class TransactionsService {
   }
   get(identity: Identity, householdId: string, id: string) {
     return this.repository.get(identity, householdId, id);
+  }
+  async exportCsv(
+    identity: Identity,
+    householdId: string,
+    query: unknown,
+  ): Promise<string> {
+    const q = fields(query, [
+      'search',
+      'dateFrom',
+      'dateTo',
+      'type',
+      'status',
+      'categoryId',
+      'accountId',
+      'ownerMemberId',
+      'currency',
+    ]);
+    const chunks = ['\uFEFF' + CSV_HEADER];
+    const encoder = new TextEncoder();
+    let bytes = encoder.encode(chunks[0]).length;
+    let cursor: string | null = null;
+    do {
+      const page = await this.list(identity, householdId, {
+        ...q,
+        limit: '100',
+        ...(cursor ? { cursor } : {}),
+      });
+      const accounts: string[] = [],
+        categories: string[] = [];
+      for (const t of page.transactions) {
+        if (t.type === 'transfer')
+          accounts.push(t.fromAccountId, t.toAccountId);
+        else {
+          accounts.push(t.accountId);
+          categories.push(t.categoryId);
+        }
+      }
+      const labels = await this.repository.exportLabels(identity, householdId, {
+        accounts,
+        categories,
+      });
+      for (const record of page.transactions) {
+        const row = csvRow(record, labels);
+        bytes += encoder.encode(row).length;
+        if (bytes > 8 * 1024 * 1024)
+          throw apiError(
+            413,
+            'EXPORT_TOO_LARGE',
+            'Export exceeds the maximum size; narrow the filters',
+          );
+        chunks.push(row);
+      }
+      cursor = page.nextCursor;
+    } while (cursor);
+    await this.repository.assertExportAccess(identity, householdId);
+    return chunks.join('');
   }
   list(identity: Identity, householdId: string, query: unknown) {
     const q = fields(query, [

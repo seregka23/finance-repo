@@ -99,6 +99,8 @@ export class Transactions {
   protected readonly purchases = signal<Row[]>([]);
   protected readonly purchaseCursor = signal<string | null>(null);
   protected readonly loadError = signal('');
+  protected readonly exportError = signal('');
+  protected readonly exporting = signal(false);
   protected readonly loading = signal(false);
   protected readonly busy = signal(false);
   protected readonly error = signal('');
@@ -173,6 +175,8 @@ export class Transactions {
       this.editing.set(false);
       this.error.set('');
       this.loadError.set('');
+      this.exportError.set('');
+      this.exporting.set(false);
       this.success.set('');
       this.busy.set(false);
       this.cursor.set(null);
@@ -270,12 +274,11 @@ export class Transactions {
       n = ++this.listGeneration;
     this.loading.set(true);
     this.loadError.set('');
-    const params = new URLSearchParams();
     if (!more) {
       this.appliedFilters = this.filters.getRawValue();
       this.cursor.set(null);
     }
-    for (const [k, v] of Object.entries(this.appliedFilters)) if (v.trim()) params.set(k, v.trim());
+    const params = this.filterParams();
     params.set('limit', '50');
     if (more) params.set('cursor', this.cursor()!);
     try {
@@ -294,6 +297,47 @@ export class Transactions {
       }
     } finally {
       if (this.current(id, g) && n === this.listGeneration) this.loading.set(false);
+    }
+  }
+  private filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(this.appliedFilters))
+      if (value.trim()) params.set(key, value.trim());
+    return params;
+  }
+  protected async exportCsv() {
+    const id = this.api.selectedId();
+    if (!id || this.exporting()) return;
+    const g = this.generation,
+      params = this.filterParams();
+    this.exportError.set('');
+    this.exporting.set(true);
+    try {
+      const blob = await this.api.requestBlob(
+        `${this.base(id)}/export${params.size ? '?' + params : ''}`,
+      );
+      if (!this.current(id, g)) return;
+      if (blob.type.split(';')[0].trim().toLowerCase() !== 'text/csv') { this.exportError.set('The export response was not a CSV file. Please try again.'); return; }
+      const url = URL.createObjectURL(blob);
+      try {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'transactions.csv';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } finally {
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      }
+    } catch (e) {
+      if (!this.current(id, g)) return;
+      const message =
+        e instanceof ApiError && e.status === 413 && e.code === 'EXPORT_TOO_LARGE'
+          ? 'Export is too large. Narrow the filters and try again.'
+          : await this.api.handleError(e);
+      if (this.current(id, g)) this.exportError.set(message);
+    } finally {
+      if (this.current(id, g)) this.exporting.set(false);
     }
   }
   protected async loadPurchases(more = false) {
