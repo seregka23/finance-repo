@@ -399,6 +399,14 @@ adjustments, currency locking, archive/restore and movement history. See the
 Run `npm run verify:accounts` for disposable local D1 API checks after building;
 `node scripts/verify-accounts-ui.mjs` exercises the actual UI in Chromium.
 
+## Dashboard and reports
+
+The Dashboard shows balances by currency, monthly cash flow, and recent
+activity. Reports let you choose a month and filter by category or merchant.
+Both use the same recorded-currency accounting rules as monthly budgets and
+flag incomplete RSD totals when FX data is missing. See the
+[reports API](docs/api/reports.md) for the balance and filter semantics.
+
 ## Monthly budgets
 
 The Budgets page opens on the current household month. Add a spending limit

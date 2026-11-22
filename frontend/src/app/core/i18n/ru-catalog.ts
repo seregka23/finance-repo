@@ -440,5 +440,26 @@ export const ru = {
   'This budget is linked to other records and cannot be deleted.':
     'Бюджет связан с другими записями и не может быть удалён.',
   'Budget categories are unavailable.': 'Категории бюджета недоступны.',
+  'Balances are not affected by report filters.': 'Фильтры отчёта не влияют на остатки.',
+  'Balances at month end': 'Остатки на конец месяца',
+  'Cash flow': 'Денежный поток',
+  'Cash flow by original currency': 'Денежный поток в исходной валюте',
+  'Categories could not be loaded.': 'Не удалось загрузить категории.',
+  Expenses: 'Расходы',
+  'Incomplete known subtotal; missing exchange rates:':
+    'Неполный известный итог; отсутствуют курсы:',
+  'Net cash flow': 'Чистый денежный поток',
+  'No breakdown for this selection.': 'Нет разбивки для выбранных фильтров.',
+  'No cash flow for this selection.': 'Нет денежного потока для выбранных фильтров.',
+  'No merchant': 'Без продавца',
+  'No transactions in this month.': 'В этом месяце нет операций.',
+  'No transactions match these filters.': 'Нет операций, соответствующих фильтрам.',
+  'RSD values are incomplete known subtotals; missing exchange rates:':
+    'Суммы в RSD неполные; отсутствуют курсы:',
+  'Spending by category': 'Расходы по категориям',
+  'Spending by merchant': 'Расходы по продавцам',
+  'Unknown category': 'Неизвестная категория',
+  'View all transactions': 'Все операции',
+  'Choose a valid month.': 'Выберите корректный месяц.',
 } as const;
 export type Message = keyof typeof ru;

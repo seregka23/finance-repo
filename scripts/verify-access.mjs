@@ -603,7 +603,7 @@ async function verify() {
         imports: false,
         budgets: true,
         reserves: true,
-        reports: false,
+        reports: true,
       });
       assert.deepEqual((await api(path, member)).counts, empty);
       await api(path, stranger, { status: 404 });
