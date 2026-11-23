@@ -165,7 +165,7 @@ async function api(
   return value;
 }
 async function prepare() {
-  // Isolated fixture: production native authentication, no provider or bypass.
+  // Isolated fixture: production native authentication and synthetic recognition only.
   const fixture = `
 import 'reflect-metadata';
 import { env } from 'cloudflare:workers';
@@ -185,8 +185,35 @@ crypto.subtle.deriveBits = (algorithm, ...args) => {
 const prisma = new PrismaService(env.DB);
 const auth = new AuthService(env.DB,prisma);
 const browserTokens = {};
+let recognitionCalls = 0;
+const originalFetch = globalThis.fetch.bind(globalThis);
+globalThis.fetch = async (target, options) => {
+  const address = typeof target === 'string' ? target : target instanceof URL ? target.href : target.url;
+  if (new URL(address).hostname !== 'api.openai.com') return originalFetch(target, options);
+  recognitionCalls++;
+  if (address !== 'https://api.openai.com/v1/responses') return new Response(null, {status: 502});
+  const body = JSON.parse(options.body);
+  if (body.store !== false || body.text?.format?.type !== 'json_schema' || body.text?.format?.strict !== true)
+    return new Response(null, {status: 502});
+  const input = JSON.stringify(body.input);
+  if (input.includes('fixture-provider-failure')) return Response.json({error: 'fixture-private-provider-marker'}, {status: 429});
+  const receipt = input.includes('data:image/webp;base64,');
+  const screenshot = input.includes('data:image/png;base64,');
+  let draft = {
+    type: 'expense', status: input.includes('fixture-held') ? 'pending' : input.includes('fixture-declined') ? 'declined' : 'posted',
+    date: '2026-01-03', amountMinor: '12500', currency: 'RSD', merchant: receipt ? 'Synthetic receipt shop' : screenshot ? 'Synthetic screenshot shop' : 'Synthetic SMS shop',
+    recipient: null, cardLastFour: '4321', feeMinor: null,
+    purchaseAmountMinor: receipt || screenshot ? null : '100', purchaseCurrency: receipt || screenshot ? null : 'EUR',
+    debitAmountMinor: '12500', debitCurrency: 'RSD', sourceAccount: null, destinationAccount: null,
+    items: receipt ? [{name:'Synthetic receipt item', quantity:'2', unitPriceMinor:'6250', amountMinor:'12500'}] : [],
+  };
+  if (input.includes('fixture-unknown-currency')) draft = {...draft, currency: null, debitCurrency: null};
+  if (input.includes('fixture-unreadable')) draft = {...draft, type:null, status:'unknown', date:null, amountMinor:null, currency:null, merchant:null, cardLastFour:null, purchaseAmountMinor:null, purchaseCurrency:null, debitAmountMinor:null, debitCurrency:null};
+  return Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(draft)}]}]});
+};
 export default { async fetch(request,bindings,context) {
   const url = new URL(request.url);
+  if (url.pathname === '/_verification/recognition-calls') return Response.json(recognitionCalls);
   if(url.pathname === '/_verification/sql' && request.method === 'POST') {
     const {sql} = await request.json();
     return Response.json(await env.DB.prepare(sql).all());
@@ -257,6 +284,7 @@ export default { async fetch(request,bindings,context) {
     JSON.stringify({
       name: "finance-access-verification",
       main: join(temporary, "worker.mjs"),
+      vars: { OPENAI_API_KEY: "fixture-only-no-live-provider" },
       compatibility_date: "2026-11-16",
       compatibility_flags: [
         "nodejs_compat",
@@ -644,6 +672,102 @@ async function verify() {
     },
   );
   await check(
+    "recognition validates synthetic notifications and receipt drafts without financial writes",
+    async () => {
+      const path = `/api/v1/households/${household.id}/imports/extract`;
+      const submit = (body, status = 200, actor = member) =>
+        api(path, actor, { method: "POST", body, status });
+      const sms = (text) => ({ sourceType: "sms", text });
+      const image = (mimeType, base64) => ({
+        sourceType: "image",
+        mimeType,
+        base64,
+      });
+      const png =
+        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8//8/AwMDEwMDAwMDAwAkBgMB/DXemwAAAABJRU5ErkJggg==";
+      const webp =
+        "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoCAAIAAUAmJaQAA3AA/vz0AAA=";
+      // Exercise the upload limit with synthetic bytes that have a PNG header.
+      const sizedPng = (bytes) => {
+        const payload = Buffer.alloc(bytes);
+        Buffer.from(png, "base64").copy(payload);
+        return image("image/png", payload.toString("base64"));
+      };
+      const snapshot = () =>
+        query(
+          `SELECT (SELECT count(*) FROM import_drafts) AS drafts, (SELECT count(*) FROM transactions) AS transactions, (SELECT count(*) FROM receipt_items) AS items, (SELECT count(*) FROM account_movements) AS movements, (SELECT sum(amount_minor) FROM account_movements) AS balance`,
+        );
+      const calls = () => api("/_verification/recognition-calls", owner);
+      const before = await snapshot();
+      const startCalls = await calls();
+      await submit(sms("fixture-denied"), 401, null);
+      await submit(sms("fixture-cross-household"), 404, stranger);
+      await submit(sms(" "), 400);
+      await submit(sms("x".repeat(12001)), 400);
+      await submit(sms("x".repeat(1_600_000)), 413);
+      await submit(image("image/jpeg", png), 400);
+      await submit(sizedPng(1_048_577), 400);
+      await submit({ ...sms("fixture-mixed"), base64: png }, 400);
+      assert.equal(await calls(), startCalls);
+      const text = await submit(
+        sms("Fixture private SMS. Purchase 1.00 EUR; debit 125.00 RSD."),
+      );
+      assert.deepEqual(
+        [
+          text.draft.purchaseAmountMinor,
+          text.draft.purchaseCurrency,
+          text.draft.debitAmountMinor,
+          text.draft.debitCurrency,
+        ],
+        ["100", "EUR", "12500", "RSD"],
+      );
+      assert.equal(text.draft.cardLastFour, "4321");
+      assert.equal(text.reviewRequired, true);
+      assert.equal(text.eligibleForPosting, false);
+      assert.ok(!JSON.stringify(text).includes("Fixture private SMS"));
+      assert.equal(
+        (await submit(image("image/png", png))).draft.merchant,
+        "Synthetic screenshot shop",
+      );
+      assert.equal(
+        (await submit(sizedPng(1_048_576))).draft.merchant,
+        "Synthetic screenshot shop",
+      );
+      const photo = await submit(image("image/webp", webp));
+      assert.deepEqual(photo.draft.items, [
+        {
+          name: "Synthetic receipt item",
+          quantity: "2",
+          unitPriceMinor: "6250",
+          amountMinor: "12500",
+        },
+      ]);
+      assert.ok(
+        (await submit(sms("fixture-held"))).reviewFlags.includes(
+          "PENDING_SETTLEMENT",
+        ),
+      );
+      const declined = await submit(sms("fixture-declined"));
+      assert.ok(declined.reviewFlags.includes("DECLINED"));
+      assert.equal(declined.eligibleForPosting, false);
+      assert.ok(
+        (await submit(sms("fixture-unknown-currency"))).reviewFlags.includes(
+          "MISSING_ESSENTIALS",
+        ),
+      );
+      assert.equal(
+        (await submit(sms("fixture-unreadable"), 422)).error.code,
+        "EXTRACTION_UNREADABLE",
+      );
+      const error = await submit(sms("fixture-provider-failure"), 502);
+      assert.equal(error.error.code, "EXTRACTION_UNAVAILABLE");
+      assert.ok(
+        !JSON.stringify(error).includes("fixture-private-provider-marker"),
+      );
+      assert.deepEqual(await snapshot(), before);
+    },
+  );
+  await check(
     "D1 batch access checks share writes and reject other households",
     async () => {
       const write = async (
@@ -687,6 +811,11 @@ async function verify() {
       });
       await api(`/api/v1/households/${household.id}`, member, { status: 404 });
       await api(`/api/v1/households/${household.id}/members`, member, {
+        status: 404,
+      });
+      await api(`/api/v1/households/${household.id}/imports/extract`, member, {
+        method: "POST",
+        body: { sourceType: "sms", text: "revoked synthetic source" },
         status: 404,
       });
       await api(`/api/v1/households/${household.id}`, member, {
