@@ -92,6 +92,11 @@ describe('recognition boundary', () => {
       text: { format: { type: 'json_schema', strict: true } },
     });
     expect(body.tools).toBeUndefined();
+    expect(opts.redirect).toBe('error');
+    expect(opts.signal).toBeInstanceOf(AbortSignal);
+    expect(new Headers(opts.headers).get('authorization')).toBe(
+      'Bearer synthetic',
+    );
   });
   it('redacts sensitive identifiers and flags unfinalized transfers and refunds', () => {
     const result = validateDraft({
@@ -115,23 +120,19 @@ describe('recognition boundary', () => {
   it('rechecks authorization after a provider response and conceals malformed content', async () => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              status: 'completed',
-              output: [
-                {
-                  type: 'message',
-                  content: [
-                    { type: 'output_text', text: JSON.stringify(draft) },
-                  ],
-                },
-              ],
-            }),
-          ),
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            status: 'completed',
+            output: [
+              {
+                type: 'message',
+                content: [{ type: 'output_text', text: JSON.stringify(draft) }],
+              },
+            ],
+          }),
         ),
+      ),
     );
     access.get
       .mockResolvedValueOnce({})
@@ -142,23 +143,21 @@ describe('recognition boundary', () => {
     access.get.mockResolvedValue({});
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              status: 'completed',
-              output: [
-                {
-                  type: 'message',
-                  content: [
-                    { type: 'output_text', text: 'private invalid json' },
-                  ],
-                },
-              ],
-            }),
-          ),
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            status: 'completed',
+            output: [
+              {
+                type: 'message',
+                content: [
+                  { type: 'output_text', text: 'private invalid json' },
+                ],
+              },
+            ],
+          }),
         ),
+      ),
     );
     await expect(
       service().extract(identity, 'h', { sourceType: 'sms', text: 'private' }),
@@ -166,6 +165,57 @@ describe('recognition boundary', () => {
       status: 502,
       response: { error: { code: 'EXTRACTION_INVALID_RESPONSE' } },
     });
+  });
+  it('does not retry or read provider error bodies, and caps successful bodies', async () => {
+    const failed = new Response('sensitive provider body', { status: 429 });
+    const text = vi.spyOn(failed, 'text');
+    const cancel = vi.spyOn(failed.body!, 'cancel');
+    const mock = vi
+      .fn()
+      .mockResolvedValueOnce(failed)
+      .mockResolvedValueOnce(new Response('x'.repeat(65537)));
+    vi.stubGlobal('fetch', mock);
+    vi.stubEnv('OPENAI_BASE_URL', 'https://invalid.example/v1');
+    await expect(
+      service().extract(identity, 'h', { sourceType: 'sms', text: 'private' }),
+    ).rejects.toMatchObject({
+      status: 502,
+      response: { error: { code: 'EXTRACTION_UNAVAILABLE' } },
+    });
+    expect(mock).toHaveBeenCalledTimes(1);
+    expect(mock.mock.calls[0][0]).toBe('https://api.openai.com/v1/responses');
+    expect(text).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalled();
+    await expect(
+      service().extract(identity, 'h', { sourceType: 'sms', text: 'private' }),
+    ).rejects.toMatchObject({
+      status: 502,
+      response: { error: { code: 'EXTRACTION_UNAVAILABLE' } },
+    });
+    expect(mock).toHaveBeenCalledTimes(2);
+    vi.unstubAllEnvs();
+  });
+  it('enforces the same deadline during a stalled response body', async () => {
+    const controller = new AbortController();
+    const timeout = vi
+      .spyOn(AbortSignal, 'timeout')
+      .mockReturnValue(controller.signal);
+    const cancel = vi.fn();
+    const stream = new ReadableStream<Uint8Array>({ cancel });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream)));
+    const pending = service().extract(identity, 'h', {
+      sourceType: 'sms',
+      text: 'private',
+    });
+    await vi.waitFor(() => expect(stream.locked).toBe(true));
+    expect(timeout).toHaveBeenCalledWith(30000);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({
+      status: 502,
+      response: { error: { code: 'EXTRACTION_UNAVAILABLE' } },
+    });
+    expect(cancel).toHaveBeenCalled();
+    timeout.mockRestore();
   });
   it('rejects malformed output without exposing it and handles unavailable provider', async () => {
     for (const change of [

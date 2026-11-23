@@ -759,7 +759,9 @@ async function verify() {
         (await submit(sms("fixture-unreadable"), 422)).error.code,
         "EXTRACTION_UNREADABLE",
       );
+      const callsBeforeFailure = await calls();
       const error = await submit(sms("fixture-provider-failure"), 502);
+      assert.equal(await calls(), callsBeforeFailure + 1);
       assert.equal(error.error.code, "EXTRACTION_UNAVAILABLE");
       assert.ok(
         !JSON.stringify(error).includes("fixture-private-provider-marker"),

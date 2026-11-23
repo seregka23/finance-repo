@@ -1,3 +1,4 @@
+import OpenAI from 'openai';
 import {
   Body,
   Controller,
@@ -274,23 +275,40 @@ export function validateDraft(raw: unknown) {
     reviewFlags,
   };
 }
-async function limitedBody(response: Response): Promise<string> {
+async function limitedBody(
+  response: Response,
+  signal: AbortSignal,
+): Promise<string> {
   const reader = response.body?.getReader();
   if (!reader) throw badResponse();
   const decoder = new TextDecoder();
   let text = '',
     size = 0;
-  for (;;) {
-    const part = await reader.read();
-    if (part.done) break;
-    size += part.value.byteLength;
-    if (size > 65536) {
-      await reader.cancel();
-      throw badResponse();
+  let onAbort: () => void = () => {};
+  const deadline = new Promise<never>((_, reject) => {
+    onAbort = () => {
+      void reader.cancel().catch(() => undefined);
+      reject(new Error('provider timeout'));
+    };
+    if (signal.aborted) onAbort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    for (;;) {
+      const part = await Promise.race([reader.read(), deadline]);
+      if (signal.aborted) throw new Error('provider timeout');
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > 65536) {
+        void reader.cancel().catch(() => undefined);
+        throw badResponse();
+      }
+      text += decoder.decode(part.value, { stream: true });
     }
-    text += decoder.decode(part.value, { stream: true });
+    return text + decoder.decode();
+  } finally {
+    signal.removeEventListener('abort', onAbort);
   }
-  return text + decoder.decode();
 }
 @Injectable()
 export class ExtractionService {
@@ -307,7 +325,7 @@ export class ExtractionService {
         'EXTRACTION_NOT_CONFIGURED',
         'Recognition is not configured',
       );
-    const content =
+    const content: OpenAI.Responses.ResponseInputContent[] =
       input.sourceType === 'sms'
         ? [{ type: 'input_text', text: input.text }]
         : [
@@ -317,7 +335,7 @@ export class ExtractionService {
               detail: 'high',
             },
           ];
-    const request = {
+    const request: OpenAI.Responses.ResponseCreateParamsNonStreaming = {
       model: 'gpt-4.1-mini',
       store: false,
       max_output_tokens: 3000,
@@ -335,17 +353,52 @@ export class ExtractionService {
     };
     let payload: unknown;
     try {
-      const response = await fetch('https://api.openai.com/v1/responses', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.key}`,
+      const client = new OpenAI({
+        apiKey: this.key,
+        adminAPIKey: null,
+        organization: null,
+        project: null,
+        webhookSecret: null,
+        baseURL: 'https://api.openai.com/v1',
+        maxRetries: 0,
+        timeout: 30000,
+        logLevel: 'off',
+        fetch: async (url, options) => {
+          const target =
+            typeof url === 'string'
+              ? url
+              : url instanceof URL
+                ? url.href
+                : url.url;
+          if (target !== 'https://api.openai.com/v1/responses')
+            throw new Error('provider');
+          // Do not forward optional SDK/environment headers or follow redirects.
+          const headers = new Headers(options?.headers);
+          const safeHeaders = new Headers();
+          for (const name of ['authorization', 'content-type', 'accept']) {
+            const value = headers.get(name);
+            if (value !== null) safeHeaders.set(name, value);
+          }
+          const response = await globalThis.fetch(url, {
+            ...options,
+            headers: safeHeaders,
+            redirect: 'error',
+          });
+          // The SDK consumes error bodies before asResponse(); reject without
+          // buffering them or propagating provider content into errors.
+          if (!response.ok) {
+            if (response.body)
+              void response.body.cancel().catch(() => undefined);
+            throw new Error('provider');
+          }
+          return response;
         },
-        body: JSON.stringify(request),
-        signal: AbortSignal.timeout(30000),
       });
-      if (!response.ok) throw new Error('provider');
-      payload = JSON.parse(await limitedBody(response));
+      const signal = AbortSignal.timeout(30000);
+      const response = await client.responses
+        .create(request, { signal })
+        .asResponse();
+      payload = JSON.parse(await limitedBody(response, signal));
     } catch {
       throw apiError(
         502,
