@@ -399,6 +399,12 @@ adjustments, currency locking, archive/restore and movement history. See the
 Run `npm run verify:accounts` for disposable local D1 API checks after building;
 `node scripts/verify-accounts-ui.mjs` exercises the actual UI in Chromium.
 
+## Transaction recognition
+
+The [recognition API](docs/api/recognition.md) validates drafts from text or one
+JPEG, PNG, or WebP image. A server-side `OPENAI_API_KEY` enables live extraction.
+The local Workerd acceptance tests substitute a provider and use synthetic data.
+
 ## Transaction CSV export
 
 Use **Export CSV** on the Transactions page to download all rows that match

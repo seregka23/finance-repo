@@ -31,6 +31,11 @@ import { AccountsRepository } from './accounts/accounts.repository.js';
 import { ReservesController, ReservesService } from './reserves/reserves.js';
 import { PlansController, PlansService } from './plans/plans.js';
 import { ReportsController, ReportsService } from './reports/reports.js';
+import {
+  EXTRACTION_KEY,
+  ExtractionController,
+  ExtractionService,
+} from './imports/extraction.js';
 import { DATABASE, HealthController } from './health.controller.js';
 
 @Module({
@@ -38,7 +43,11 @@ import { DATABASE, HealthController } from './health.controller.js';
   controllers: [HealthController],
 })
 export class WorkerModule {
-  static register(database: D1Database, probeEnabled = false): DynamicModule {
+  static register(
+    database: D1Database,
+    probeEnabled = false,
+    extractionKey: string | null = null,
+  ): DynamicModule {
     return {
       module: WorkerModule,
       controllers: [
@@ -51,6 +60,7 @@ export class WorkerModule {
         ReservesController,
         PlansController,
         ReportsController,
+        ExtractionController,
         ...(probeEnabled ? [InfrastructureProbeController] : []),
       ],
       providers: [
@@ -68,6 +78,8 @@ export class WorkerModule {
         ReservesService,
         PlansService,
         ReportsService,
+        ExtractionService,
+        { provide: EXTRACTION_KEY, useValue: extractionKey },
         { provide: APP_FILTER, useClass: ApiErrorFilter },
         { provide: APP_GUARD, useClass: ApiAuthGuard },
         { provide: APP_GUARD, useClass: HouseholdGuard },

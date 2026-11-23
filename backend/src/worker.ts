@@ -4,13 +4,20 @@ import { env } from 'cloudflare:workers';
 import { NestFactory } from '@nestjs/core';
 import { INestApplication } from '@nestjs/common';
 import { WorkerModule } from './worker.module.js';
+import express from 'express';
 
 const handler = httpServerHandler({ port: 3000 });
 let application: Promise<INestApplication> | undefined;
 
 function initialize(): Promise<INestApplication> {
   application ??= NestFactory.create(
-    WorkerModule.register(env.DB, env.INFRASTRUCTURE_PROBE_ENABLED === 'true'),
+    WorkerModule.register(
+      env.DB,
+      env.INFRASTRUCTURE_PROBE_ENABLED === 'true',
+      'OPENAI_API_KEY' in env && typeof env.OPENAI_API_KEY === 'string'
+        ? env.OPENAI_API_KEY
+        : null,
+    ),
     {
       logger: ['error', 'warn'],
       abortOnError: false,
@@ -27,6 +34,16 @@ function initialize(): Promise<INestApplication> {
           res.setHeader('Cache-Control', 'no-store');
           next();
         },
+      );
+      const extractionParser = express.json({ limit: '1500kb' });
+      // A wrapper avoids Nest mistaking this route-local parser for its global parser.
+      app.use(
+        '/api/v1/households/:householdId/imports/extract',
+        (
+          req: express.Request,
+          res: express.Response,
+          next: express.NextFunction,
+        ) => extractionParser(req, res, next),
       );
       await app.listen(3000);
       return app;
