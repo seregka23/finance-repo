@@ -1,5 +1,10 @@
 import OpenAI from 'openai';
 import {
+  createOpenAIClient,
+  readProviderBody,
+} from '../finance/provider-transport.js';
+import { CategoryDecisionService } from '../decisions/category-decision.js';
+import {
   Body,
   Controller,
   Inject,
@@ -275,46 +280,12 @@ export function validateDraft(raw: unknown) {
     reviewFlags,
   };
 }
-async function limitedBody(
-  response: Response,
-  signal: AbortSignal,
-): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) throw badResponse();
-  const decoder = new TextDecoder();
-  let text = '',
-    size = 0;
-  let onAbort: () => void = () => {};
-  const deadline = new Promise<never>((_, reject) => {
-    onAbort = () => {
-      void reader.cancel().catch(() => undefined);
-      reject(new Error('provider timeout'));
-    };
-    if (signal.aborted) onAbort();
-    else signal.addEventListener('abort', onAbort, { once: true });
-  });
-  try {
-    for (;;) {
-      const part = await Promise.race([reader.read(), deadline]);
-      if (signal.aborted) throw new Error('provider timeout');
-      if (part.done) break;
-      size += part.value.byteLength;
-      if (size > 65536) {
-        void reader.cancel().catch(() => undefined);
-        throw badResponse();
-      }
-      text += decoder.decode(part.value, { stream: true });
-    }
-    return text + decoder.decode();
-  } finally {
-    signal.removeEventListener('abort', onAbort);
-  }
-}
 @Injectable()
 export class ExtractionService {
   constructor(
     @Inject(EXTRACTION_KEY) private readonly key: string | null,
     private readonly access: HouseholdAccessService,
+    private readonly categoryDecision: CategoryDecisionService,
   ) {}
   async extract(identity: Identity, householdId: string, raw: unknown) {
     const input = parseInput(raw);
@@ -353,52 +324,12 @@ export class ExtractionService {
     };
     let payload: unknown;
     try {
-      const client = new OpenAI({
-        apiKey: this.key,
-        adminAPIKey: null,
-        organization: null,
-        project: null,
-        webhookSecret: null,
-        baseURL: 'https://api.openai.com/v1',
-        maxRetries: 0,
-        timeout: 30000,
-        logLevel: 'off',
-        fetch: async (url, options) => {
-          const target =
-            typeof url === 'string'
-              ? url
-              : url instanceof URL
-                ? url.href
-                : url.url;
-          if (target !== 'https://api.openai.com/v1/responses')
-            throw new Error('provider');
-          // Do not forward optional SDK/environment headers or follow redirects.
-          const headers = new Headers(options?.headers);
-          const safeHeaders = new Headers();
-          for (const name of ['authorization', 'content-type', 'accept']) {
-            const value = headers.get(name);
-            if (value !== null) safeHeaders.set(name, value);
-          }
-          const response = await globalThis.fetch(url, {
-            ...options,
-            headers: safeHeaders,
-            redirect: 'error',
-          });
-          // The SDK consumes error bodies before asResponse(); reject without
-          // buffering them or propagating provider content into errors.
-          if (!response.ok) {
-            if (response.body)
-              void response.body.cancel().catch(() => undefined);
-            throw new Error('provider');
-          }
-          return response;
-        },
-      });
+      const client = createOpenAIClient(this.key, 'responses', 30000);
       const signal = AbortSignal.timeout(30000);
       const response = await client.responses
         .create(request, { signal })
         .asResponse();
-      payload = JSON.parse(await limitedBody(response, signal));
+      payload = JSON.parse(await readProviderBody(response, signal));
     } catch {
       throw apiError(
         502,
@@ -452,7 +383,14 @@ export class ExtractionService {
     } catch {
       throw badResponse();
     }
-    return validateDraft(parsed);
+    const result = validateDraft(parsed);
+    const categoryDecision = await this.categoryDecision.decide(
+      identity,
+      householdId,
+      result.draft,
+    );
+    await this.access.get(identity, householdId);
+    return { ...result, categoryDecision };
   }
 }
 @Controller('api/v1/households/:householdId/imports')

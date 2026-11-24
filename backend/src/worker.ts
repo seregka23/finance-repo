@@ -17,6 +17,34 @@ function initialize(): Promise<INestApplication> {
       'OPENAI_API_KEY' in env && typeof env.OPENAI_API_KEY === 'string'
         ? env.OPENAI_API_KEY
         : null,
+      {
+        provider:
+          'CATEGORY_DECISION_PROVIDER' in env
+            ? typeof env.CATEGORY_DECISION_PROVIDER === 'string'
+              ? env.CATEGORY_DECISION_PROVIDER
+              : ''
+            : null,
+        openaiKey:
+          'OPENAI_API_KEY' in env && typeof env.OPENAI_API_KEY === 'string'
+            ? env.OPENAI_API_KEY
+            : null,
+        geminiKey:
+          'GEMINI_API_KEY' in env && typeof env.GEMINI_API_KEY === 'string'
+            ? env.GEMINI_API_KEY
+            : null,
+        openaiMinProbability:
+          'CATEGORY_DECISION_OPENAI_MIN_PROBABILITY' in env
+            ? typeof env.CATEGORY_DECISION_OPENAI_MIN_PROBABILITY === 'string'
+              ? env.CATEGORY_DECISION_OPENAI_MIN_PROBABILITY
+              : ''
+            : null,
+        geminiMinProbability:
+          'CATEGORY_DECISION_GEMINI_MIN_PROBABILITY' in env
+            ? typeof env.CATEGORY_DECISION_GEMINI_MIN_PROBABILITY === 'string'
+              ? env.CATEGORY_DECISION_GEMINI_MIN_PROBABILITY
+              : ''
+            : null,
+      },
     ),
     {
       logger: ['error', 'warn'],

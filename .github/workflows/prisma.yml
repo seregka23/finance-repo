@@ -45,6 +45,7 @@ jobs:
       - run: npm --prefix backend test
       - run: npm --prefix backend run lint
       - run: node scripts/verify-access.mjs
+      - run: node scripts/verify-access.mjs --gemini
       - run: node scripts/verify-money.mjs
       - run: node scripts/verify-transactions.mjs
       - run: node scripts/verify-accounts.mjs
