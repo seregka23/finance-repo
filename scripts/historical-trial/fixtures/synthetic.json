@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "snapshotId": "synthetic-household-trial",
+  "asOf": "2026-03-01T00:00:00.000Z",
+  "authority": {
+    "accounts": "notion",
+    "categories": "notion",
+    "transactions": "supabase",
+    "plans": "notion",
+    "reserves": "supabase"
+  },
+  "datasets": {
+    "notion": {
+      "accounts": [
+        {
+          "id": "rsd-account",
+          "name": "Synthetic RSD bank",
+          "type": "bank",
+          "currency": "RSD",
+          "openingDate": "2026-01-01",
+          "openingBalanceMinor": "500000",
+          "adjustments": [
+            {
+              "id": "balance-correction",
+              "date": "2026-02-05",
+              "amountMinor": "-2000"
+            }
+          ]
+        },
+        {
+          "id": "eur-account",
+          "name": "Synthetic EUR bank",
+          "type": "bank",
+          "currency": "EUR",
+          "openingDate": "2026-01-01",
+          "openingBalanceMinor": "10000"
+        }
+      ],
+      "categories": [
+        { "id": "income", "name": "Synthetic income", "type": "income" },
+        { "id": "food", "name": "Synthetic groceries", "type": "expense" },
+        { "id": "fees", "name": "Synthetic fees", "type": "expense" }
+      ],
+      "plans": [
+        {
+          "id": "food-jan",
+          "month": "2026-01",
+          "categoryId": "food",
+          "limitMinor": "60000"
+        }
+      ]
+    },
+    "supabase": {
+      "accounts": [
+        {
+          "id": "non-authoritative-account",
+          "name": "Inventory only",
+          "type": "cash",
+          "currency": "USD",
+          "openingDate": "2026-01-01",
+          "openingBalanceMinor": "100"
+        }
+      ],
+      "transactions": [
+        {
+          "id": "salary",
+          "type": "income",
+          "status": "posted",
+          "date": "2026-01-06",
+          "accountId": "rsd-account",
+          "categoryId": "income",
+          "amountMinor": "200000",
+          "currency": "RSD"
+        },
+        {
+          "id": "groceries",
+          "type": "expense",
+          "status": "posted",
+          "date": "2026-01-10",
+          "accountId": "rsd-account",
+          "categoryId": "food",
+          "amountMinor": "30000",
+          "currency": "RSD"
+        },
+        {
+          "id": "fx-transfer",
+          "type": "transfer",
+          "status": "posted",
+          "date": "2026-01-12",
+          "debit": {
+            "id": "bank-transfer-debit",
+            "accountId": "rsd-account",
+            "amountMinor": "117000",
+            "currency": "RSD"
+          },
+          "credit": {
+            "id": "bank-transfer-credit",
+            "accountId": "eur-account",
+            "date": "2026-01-13",
+            "amountMinor": "1000",
+            "currency": "EUR"
+          },
+          "fee": {
+            "id": "bank-transfer-fee",
+            "categoryId": "fees",
+            "date": "2026-02-01",
+            "amountMinor": "100",
+            "currency": "RSD"
+          }
+        },
+        {
+          "id": "refund",
+          "type": "refund",
+          "status": "posted",
+          "date": "2026-02-01",
+          "accountId": "rsd-account",
+          "purchaseId": "groceries",
+          "amountMinor": "5000",
+          "currency": "RSD"
+        },
+        {
+          "id": "no-rate",
+          "type": "expense",
+          "status": "posted",
+          "date": "2026-02-11",
+          "accountId": "eur-account",
+          "categoryId": "food",
+          "amountMinor": "250",
+          "currency": "EUR"
+        },
+        {
+          "id": "eur-income",
+          "type": "income",
+          "status": "posted",
+          "date": "2026-02-12",
+          "accountId": "eur-account",
+          "categoryId": "income",
+          "amountMinor": "100",
+          "currency": "EUR",
+          "exchangeRate": "117.5",
+          "exchangeRateSource": "synthetic bank snapshot",
+          "rsdEquivalentMinor": "11750"
+        },
+        {
+          "id": "held",
+          "type": "expense",
+          "status": "unconfirmed",
+          "date": "2026-02-20",
+          "accountId": "rsd-account",
+          "categoryId": "food",
+          "amountMinor": "900",
+          "currency": "RSD"
+        },
+        {
+          "id": "unmatched",
+          "type": "transfer",
+          "status": "posted",
+          "date": "2026-02-21",
+          "debit": {
+            "id": "orphan-transfer-debit",
+            "accountId": "rsd-account",
+            "amountMinor": "6000",
+            "currency": "RSD"
+          }
+        }
+      ],
+      "reserves": [
+        {
+          "id": "food-reserve",
+          "name": "Synthetic groceries reserve",
+          "accountId": "rsd-account",
+          "movements": [
+            {
+              "id": "allocate",
+              "date": "2026-01-02",
+              "type": "allocation",
+              "amountMinor": "20000"
+            },
+            {
+              "id": "spend",
+              "date": "2026-01-10",
+              "type": "spend",
+              "amountMinor": "-2000",
+              "transactionId": "groceries"
+            },
+            {
+              "id": "release",
+              "date": "2026-02-10",
+              "type": "release",
+              "amountMinor": "-5000"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "controls": {
+    "counts": {
+      "accounts": 2,
+      "categories": 3,
+      "transactions": 7,
+      "plans": 1,
+      "reserves": 1
+    },
+    "accountBalances": [
+      { "id": "rsd-account", "currency": "RSD", "balanceMinor": "555900" },
+      { "id": "eur-account", "currency": "EUR", "balanceMinor": "10850" }
+    ],
+    "monthly": [
+      {
+        "month": "2026-01",
+        "incomeRsdMinor": "200000",
+        "expensesRsdMinor": "30000",
+        "missingFxCount": 0
+      },
+      {
+        "month": "2026-02",
+        "incomeRsdMinor": "11750",
+        "expensesRsdMinor": "-4900",
+        "missingFxCount": 1
+      },
+      {
+        "month": "2026-03",
+        "incomeRsdMinor": "0",
+        "expensesRsdMinor": "0",
+        "missingFxCount": 0
+      }
+    ],
+    "reserveBalances": [
+      { "id": "food-reserve", "currency": "RSD", "balanceMinor": "13000" }
+    ]
+  }
+}
