@@ -23,6 +23,23 @@ function text(value: unknown, max = 200): string {
     throw invalid();
   return value.trim();
 }
+function accountMetadata(
+  body: Record<string, unknown>,
+): Pick<AccountInput, 'bankName' | 'cardLastFour'> {
+  if (!('bankName' in body) && !('cardLastFour' in body)) return {};
+  if (!('bankName' in body) || !('cardLastFour' in body)) throw invalid();
+  if (body.bankName === null && body.cardLastFour === null)
+    return { bankName: null, cardLastFour: null };
+  if (
+    typeof body.cardLastFour !== 'string' ||
+    !/^\d{4}$/.test(body.cardLastFour)
+  )
+    throw invalid();
+  return {
+    bankName: text(body.bankName, 100),
+    cardLastFour: body.cardLastFour,
+  };
+}
 function input(body: Record<string, unknown>): AccountInput {
   if (
     metadata.some((key) => !(key in body)) ||
@@ -37,6 +54,7 @@ function input(body: Record<string, unknown>): AccountInput {
     ownerMemberId:
       body.ownerMemberId === null ? null : text(body.ownerMemberId),
     designation: body.designation as AccountInput['designation'],
+    ...accountMetadata(body),
   };
 }
 function version(value: unknown): number {
@@ -58,6 +76,8 @@ export class AccountsService {
     const value = validate(() => {
       const b = fields(body, [
         ...metadata,
+        'bankName',
+        'cardLastFour',
         'openingBalanceMinor',
         'openingDate',
       ]);
@@ -80,7 +100,12 @@ export class AccountsService {
   }
   update(identity: Identity, householdId: string, id: string, body: unknown) {
     const value = validate(() => {
-      const b = fields(body, [...metadata, 'version']);
+      const b = fields(body, [
+        ...metadata,
+        'bankName',
+        'cardLastFour',
+        'version',
+      ]);
       return { account: input(b), version: version(b.version) };
     });
     return this.repository.update(

@@ -1,3 +1,4 @@
+import type { PostingHook } from './contracts.js';
 import { apiError, unavailable, type Identity } from '../auth/auth.js';
 import { cumulativeRefundRsd } from '../finance/fx.js';
 import type { Currency } from '../finance/money.js';
@@ -56,6 +57,7 @@ export class RefundWrite {
     h: string,
     input: RefundInput,
     key: string,
+    hook?: PostingHook,
   ): Promise<RefundRecord> {
     // Check the immutable claim before consulting mutable purchase/account state.
     const m = await this.prisma.householdMember.findFirst({
@@ -112,6 +114,7 @@ export class RefundWrite {
         input,
         key,
         m.id,
+        hook,
       );
     } catch (error) {
       const claimed = await this.prisma.postingRequest.findFirst({
@@ -148,6 +151,7 @@ export class RefundWrite {
     input: RefundInput | null,
     key: string | null,
     actor: string,
+    hook?: PostingHook,
   ): Promise<RefundRecord> {
     const operation = key !== null ? 'post' : input ? 'edit' : 'void';
     let purchaseId = input?.purchaseTransactionId;
@@ -664,6 +668,7 @@ export class RefundWrite {
         operation === 'post' ? claim : null,
       ),
     );
+    if (operation === 'post' && hook) s.push(...hook(id, gate));
     if (operation === 'post')
       s.push(
         this.stmt(

@@ -1,4 +1,99 @@
 export const ru = {
+  'Review required': 'Требуется проверка',
+  'Transaction declined': 'Операция отклонена',
+  'Settlement pending': 'Расчёт ожидается',
+  'Settlement status unknown': 'Статус расчёта неизвестен',
+  'Some essential details are missing': 'Некоторые обязательные данные отсутствуют',
+  'Transfer details need review': 'Проверьте данные перевода',
+  'Choose the original purchase': 'Выберите первоначальную покупку',
+
+  'Recognition is not configured. Enter the transaction manually.':
+    'Распознавание не настроено. Введите операцию вручную.',
+  'The source could not be read. Try clearer text or another image.':
+    'Не удалось прочитать источник. Попробуйте более чёткий текст или другое изображение.',
+  'Recognition is unavailable. Try again or enter the transaction manually.':
+    'Распознавание недоступно. Повторите попытку или введите операцию вручную.',
+  'Recognition could not interpret this source. Try another image or enter manually.':
+    'Не удалось распознать источник. Попробуйте другое изображение или введите операцию вручную.',
+  'This draft cannot be confirmed as submitted. Reload it and review the details.':
+    'Не удалось подтвердить черновик. Загрузите его снова и проверьте данные.',
+  'This draft was not found. Return to the saved drafts list.':
+    'Черновик не найден. Вернитесь к списку сохранённых черновиков.',
+
+  'Choose the recognized transaction type.': 'Выберите распознанный тип операции.',
+  'Choose a transaction type.': 'Выберите тип операции.',
+  'Choose type': 'Выберите тип',
+
+  'Import transaction': 'Импортировать операцию',
+  'Import transactions': 'Импорт операций',
+  'Review recognized details before posting.': 'Проверьте распознанные данные перед сохранением.',
+  'Add a source': 'Добавить источник',
+  'Text and images are processed for recognition and are not saved as raw files.':
+    'Текст и изображения обрабатываются для распознавания и не сохраняются как исходные файлы.',
+  'Import source': 'Источник импорта',
+  'Bank SMS': 'SMS банка',
+  Screenshot: 'Снимок экрана',
+  Receipt: 'Чек',
+  'JPEG, PNG or WebP, up to 1 MiB.': 'JPEG, PNG или WebP, до 1 МиБ.',
+  'Choose image': 'Выбрать изображение',
+  'Take photo': 'Сделать фото',
+  'Processing…': 'Обработка…',
+  'Preview and save': 'Распознать и сохранить',
+  'Saved drafts': 'Сохранённые черновики',
+  'The latest 50 imports are shown.': 'Показаны последние 50 импортов.',
+  'No saved drafts.': 'Нет сохранённых черновиков.',
+  Review: 'Проверить',
+  'Review draft': 'Проверка черновика',
+  'This import has already been confirmed.': 'Этот импорт уже подтверждён.',
+  'View transactions': 'Посмотреть операции',
+  'Settlement status': 'Статус расчёта',
+  'Declined transactions cannot be confirmed.': 'Отклонённую операцию нельзя подтвердить.',
+  'Review these recognized details carefully.': 'Внимательно проверьте распознанные данные.',
+  'Original purchase': 'Первоначальная сумма покупки',
+  'Actual debit': 'Фактическое списание',
+  'Recognized fee': 'Распознанная комиссия',
+  'Possible duplicates': 'Возможные дубликаты',
+  'Add account and return to draft': 'Добавить счёт и вернуться к черновику',
+  'Receipt items': 'Позиции чека',
+  Item: 'Позиция',
+  Quantity: 'Количество',
+  'Unit price': 'Цена за единицу',
+  'Line total': 'Сумма позиции',
+  'Remove item': 'Удалить позицию',
+  'Add item': 'Добавить позицию',
+  'I confirm this transaction has settled.': 'Подтверждаю, что расчёт по операции завершён.',
+  'I reviewed the possible duplicates and want to keep this separate.':
+    'Я проверил возможные дубликаты и хочу сохранить операцию отдельно.',
+  'Confirm transaction': 'Подтвердить операцию',
+  'Attach to an existing expense': 'Прикрепить к существующему расходу',
+  'This adds receipt items without creating another debit.':
+    'Позиции чека будут добавлены без повторного списания.',
+  'Existing expense': 'Существующий расход',
+  'Choose expense': 'Выберите расход',
+  'Attach receipt': 'Прикрепить чек',
+  'Enter a bank message.': 'Введите сообщение банка.',
+  'Choose a JPEG, PNG or WebP image no larger than 1 MiB.':
+    'Выберите изображение JPEG, PNG или WebP размером до 1 МиБ.',
+  'Check receipt items and amounts.': 'Проверьте позиции чека и суммы.',
+  'Review possible duplicates and confirm you want to keep this separate.':
+    'Проверьте возможные дубликаты и подтвердите отдельное сохранение.',
+  'Choose an existing expense.': 'Выберите существующий расход.',
+  'Confirm settlement before posting.': 'Подтвердите завершение расчёта перед сохранением.',
+  'Check the account and amount.': 'Проверьте счёт и сумму.',
+  'Import confirmed.': 'Импорт подтверждён.',
+  'Bank name (optional)': 'Название банка (необязательно)',
+  'Last four card digits (optional)': 'Последние четыре цифры карты (необязательно)',
+  'Enter both fields to help match bank messages. Never enter the full card number.':
+    'Заполните оба поля для сопоставления SMS банка. Не вводите полный номер карты.',
+  'Enter a bank name and exactly four card digits, or leave both blank.':
+    'Введите название банка и ровно четыре цифры карты либо оставьте оба поля пустыми.',
+  sms: 'SMS',
+  screenshot: 'снимок экрана',
+  receipt: 'чек',
+  unknown: 'неизвестно',
+  declined: 'отклонена',
+  confirmed: 'подтверждён',
+
   Dashboard: 'Обзор',
   Accounts: 'Счета',
   Transactions: 'Операции',
@@ -465,6 +560,7 @@ export const ru = {
   'Exporting…': 'Экспорт…',
   'Export is too large. Narrow the filters and try again.':
     'Файл слишком большой. Уточните фильтры и повторите попытку.',
-  'The export response was not a CSV file. Please try again.': 'Ответ экспорта не является файлом CSV. Попробуйте ещё раз.',
+  'The export response was not a CSV file. Please try again.':
+    'Ответ экспорта не является файлом CSV. Попробуйте ещё раз.',
 } as const;
 export type Message = keyof typeof ru;

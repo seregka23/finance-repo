@@ -11,6 +11,8 @@ export function createAccountForm(today: string) {
     currency: new FormControl<Currency>('RSD', { nonNullable: true }),
     ownerMemberId: new FormControl('', { nonNullable: true }),
     designation: new FormControl<AccountInput['designation']>('personal', { nonNullable: true }),
+    bankName: new FormControl('', { nonNullable: true }),
+    cardLastFour: new FormControl('', { nonNullable: true }),
     opening: new FormControl('0', { nonNullable: true }),
     date: new FormControl(today, { nonNullable: true }),
   });

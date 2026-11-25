@@ -246,6 +246,11 @@ globalThis.fetch = async (target, options) => {
   }
   if (input.includes('fixture-transfer')) draft.type = 'transfer';
   if (input.includes('fixture-refund')) draft.type = 'refund';
+  if (input.includes('fixture-import-bank')) {
+    draft.sourceAccount = 'Fixture Bank';
+    draft.merchant = 'Synthetic receipt shop';
+  }
+  if (input.includes('fixture-echo-source')) draft.merchant = body.input[0].content[0].text;
   if (input.includes('fixture-unreadable')) draft = {...draft, type:null, status:'unknown', date:null, amountMinor:null, currency:null, merchant:null, cardLastFour:null, purchaseAmountMinor:null, purchaseCurrency:null, debitAmountMinor:null, debitCurrency:null};
   return Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(draft)}]}]});
 };
@@ -880,7 +885,9 @@ async function verify() {
         ["unoffered", null],
         ["provider failure", null],
       ]) {
-        const result = await extract(`Fixture decision ${scenario}`);
+        const result = await extract(
+          `Fixture decision ${scenario}, payment 125.00 RSD`,
+        );
         assert.deepEqual(result.categoryDecision, {
           categoryId: null,
           provider: categoryProvider,
@@ -924,6 +931,281 @@ async function verify() {
       });
       assert.equal(posted.categoryId, transit.id);
       assert.equal(await calls(), initialCalls + 5);
+    },
+  );
+  await check(
+    "saved imports deduplicate, confirm once, and attach a receipt without a new debit",
+    async () => {
+      const householdPath = `/api/v1/households/${household.id}`;
+      const path = `${householdPath}/imports`;
+      const preview = (body, status = 200, actor = member) =>
+        api(`${path}/preview`, actor, { method: "POST", body, status });
+      const confirm = (id, body, status = 200) =>
+        api(`${path}/${id}/confirm`, member, { method: "POST", body, status });
+      const sms = (text) => ({ sourceType: "sms", text });
+      const source = sms("fixture-import-bank private raw input marker");
+      const snapshot = () =>
+        query(`SELECT
+          (SELECT count(*) FROM transactions) AS transactions,
+          (SELECT count(*) FROM account_movements) AS movements,
+          (SELECT count(*) FROM receipt_items) AS items,
+          (SELECT count(*) FROM idempotency_keys) AS idempotencyKeys`);
+      const { categories } = await api(
+        `${householdPath}/categories?status=active`,
+        member,
+      );
+      const category = categories.find(
+        (item) => item.name === "Fixture groceries",
+      );
+      assert.ok(category);
+      const createCard = (name) =>
+        api(`${householdPath}/accounts`, member, {
+          method: "POST",
+          status: 201,
+          body: {
+            name,
+            type: "card",
+            currency: "RSD",
+            ownerMemberId: null,
+            designation: "personal",
+            openingBalanceMinor: "200000",
+            openingDate: "2026-01-01",
+            bankName: "fixture bank",
+            cardLastFour: "4321",
+          },
+        });
+      const bank = await createCard("Fixture card for import");
+      await preview(source, 401, null);
+      await preview(source, 404, stranger);
+      const categoriesBeforeEcho = await api(
+        "/_verification/category-calls",
+        owner,
+      );
+      const echo = await preview(
+        sms("fixture-echo-source\nprivate synthetic marker"),
+        422,
+      );
+      assert.equal(echo.error.code, "EXTRACTION_UNREADABLE");
+      assert.ok(!JSON.stringify(echo).includes("private synthetic marker"));
+      assert.equal(
+        await api("/_verification/category-calls", owner),
+        categoriesBeforeEcho,
+      );
+      const before = await snapshot();
+      const draft = await preview(source);
+      assert.equal(draft.status, "pending");
+      assert.equal(draft.suggestedAccountId, bank.id);
+      assert.equal(draft.categoryDecision.categoryId, category.id);
+      const [decision] = await query(
+        `SELECT decision_provider AS provider FROM import_drafts WHERE id='${draft.id}'`,
+      );
+      assert.equal(decision.provider, categoryProvider);
+      assert.equal((await api(`${path}/${draft.id}`, owner)).id, draft.id);
+      assert.ok(
+        (await api(path, owner)).drafts.some((entry) => entry.id === draft.id),
+      );
+      await api(`${path}/${draft.id}`, stranger, { status: 404 });
+      const calls = await api("/_verification/recognition-calls", owner);
+      assert.equal((await preview(source)).id, draft.id);
+      assert.equal(await api("/_verification/recognition-calls", owner), calls);
+      assert.deepEqual(await snapshot(), before);
+
+      const input = {
+        type: "expense",
+        transactionDate: "2026-01-03",
+        accountId: bank.id,
+        categoryId: category.id,
+        amountMinor: "12500",
+        currency: "RSD",
+        merchant: "Synthetic receipt shop",
+      };
+      const post = {
+        mode: "post",
+        transaction: input,
+        items: [],
+        settlementConfirmed: false,
+      };
+      const [a, b] = await Promise.all([
+        confirm(draft.id, post),
+        confirm(draft.id, post),
+      ]);
+      assert.equal(a.transactionId, b.transactionId);
+      assert.ok(a.transactionId);
+      assert.equal((await preview(source)).transactionId, a.transactionId);
+      await confirm(
+        draft.id,
+        { ...post, transaction: { ...input, amountMinor: "12499" } },
+        409,
+      );
+      const [posted] = await snapshot();
+      assert.equal(posted.transactions, before[0].transactions + 1);
+      assert.equal(posted.movements, before[0].movements + 1);
+      assert.equal(posted.idempotencyKeys, before[0].idempotencyKeys + 1);
+
+      const image = {
+        sourceType: "receipt",
+        mimeType: "image/webp",
+        base64: "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoCAAIAAUAmJaQAA3AA/vz0AAA=",
+      };
+      const screenshot = await preview({ ...image, sourceType: "screenshot" });
+      assert.equal(screenshot.sourceType, "screenshot");
+      const receipt = await preview(image);
+      assert.equal(receipt.id, screenshot.id);
+      assert.equal(receipt.sourceType, "receipt");
+      assert.ok(
+        receipt.possibleDuplicates.some(
+          (candidate) => candidate.id === a.transactionId,
+        ),
+      );
+      const repeatImage = await preview({ ...image, sourceType: "screenshot" });
+      assert.equal(repeatImage.id, receipt.id);
+      assert.equal(repeatImage.sourceType, "receipt");
+      const attach = {
+        mode: "attach",
+        transactionId: a.transactionId,
+        items: [
+          {
+            name: "Fixture edited item",
+            quantity: "2",
+            unitPriceMinor: "6250",
+            amountMinor: "12500",
+          },
+        ],
+      };
+      const attempts = await Promise.all([
+        confirm(receipt.id, attach),
+        confirm(receipt.id, attach),
+      ]);
+      assert.ok(
+        attempts.every((result) => result.transactionId === a.transactionId),
+      );
+      assert.deepEqual((await snapshot())[0], {
+        ...posted,
+        items: posted.items + 1,
+      });
+
+      const similar = await preview(
+        sms("fixture-import-bank different source"),
+      );
+      assert.notEqual(similar.id, draft.id);
+      assert.ok(
+        similar.possibleDuplicates.some(
+          (candidate) => candidate.id === a.transactionId,
+        ),
+      );
+      const another = await confirm(similar.id, post);
+      assert.notEqual(another.transactionId, a.transactionId);
+
+      const held = await preview(sms("fixture-held import"));
+      const declined = await preview(sms("fixture-declined import"));
+      const transfer = await preview(sms("fixture-transfer import"));
+      const refund = await preview(sms("fixture-refund import"));
+      const beforeBlocked = await snapshot();
+      for (const unsafe of [held, declined, transfer, refund]) {
+        await confirm(unsafe.id, post, 409);
+      }
+      assert.deepEqual(await snapshot(), beforeBlocked);
+      assert.ok(
+        (await confirm(held.id, { ...post, settlementConfirmed: true }))
+          .transactionId,
+      );
+
+      const secondCard = await createCard("Another fixture card");
+      const ambiguous = await preview(
+        sms("fixture-import-bank ambiguous account"),
+      );
+      assert.equal(ambiguous.suggestedAccountId, null);
+      const [beforeTransfer] = await snapshot();
+      const transferPost = {
+        ...post,
+        transaction: {
+          type: "transfer",
+          transactionDate: input.transactionDate,
+          fromAccountId: bank.id,
+          toAccountId: secondCard.id,
+          debitAmountMinor: "1000",
+          creditAmountMinor: "1000",
+          debitCurrency: "RSD",
+          creditCurrency: "RSD",
+          fee: { categoryId: category.id, amountMinor: "100" },
+        },
+      };
+      const transferResult = await confirm(transfer.id, transferPost);
+      assert.equal(
+        (await confirm(transfer.id, transferPost)).transactionId,
+        transferResult.transactionId,
+      );
+      assert.deepEqual((await snapshot())[0], {
+        ...beforeTransfer,
+        transactions: beforeTransfer.transactions + 2,
+        movements: beforeTransfer.movements + 3,
+        idempotencyKeys: beforeTransfer.idempotencyKeys + 1,
+      });
+      const refundPost = {
+        ...post,
+        transaction: {
+          type: "refund",
+          transactionDate: "2026-01-04",
+          purchaseTransactionId: a.transactionId,
+          accountId: bank.id,
+          amountMinor: "1000",
+        },
+      };
+      const refundResult = await confirm(refund.id, refundPost);
+      const storedRefund = await api(
+        `${householdPath}/transactions/${refundResult.transactionId}`,
+        member,
+      );
+      assert.equal(storedRefund.purchaseTransactionId, a.transactionId);
+      assert.equal(storedRefund.categoryId, category.id);
+
+      const rollbackDraft = await preview({
+        sourceType: "receipt",
+        mimeType: "image/png",
+        base64:
+          "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8//8/AwMDEwMDAwMDAwAkBgMB/DXemwAAAABJRU5ErkJggg==",
+      });
+      const beforeRollback = await snapshot();
+      await query(`CREATE TRIGGER verify_import_rollback BEFORE INSERT ON receipt_items
+        WHEN NEW.name='Fixture rollback item' BEGIN SELECT RAISE(ABORT,'fixture_import_rollback'); END`);
+      try {
+        const failed = await confirm(
+          rollbackDraft.id,
+          {
+            ...post,
+            items: [
+              {
+                name: "Fixture rollback item",
+                quantity: null,
+                unitPriceMinor: null,
+                amountMinor: null,
+              },
+            ],
+          },
+          503,
+        );
+        assert.ok(!JSON.stringify(failed).includes("fixture_import_rollback"));
+        assert.deepEqual(await snapshot(), beforeRollback);
+        assert.equal(
+          (await api(`${path}/${rollbackDraft.id}`, owner)).status,
+          "pending",
+        );
+      } finally {
+        await query("DROP TRIGGER verify_import_rollback");
+      }
+
+      const [privacy] = await query(`SELECT
+        (SELECT count(*) FROM import_drafts WHERE instr(extracted_fields_json,'private raw input marker')>0 OR instr(extracted_fields_json,'${image.base64}')>0) AS rawSources,
+        (SELECT count(*) FROM receipt_items WHERE name='Fixture edited item') AS savedLines`);
+      assert.deepEqual(privacy, { rawSources: 0, savedLines: 1 });
+      await api(`${householdPath}/categories/${category.id}`, member, {
+        method: "PATCH",
+        body: { status: "archived" },
+      });
+      assert.equal(
+        (await api(`${path}/${draft.id}`, owner)).categoryDecision.categoryId,
+        null,
+      );
     },
   );
   await check(

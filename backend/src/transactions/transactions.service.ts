@@ -6,6 +6,7 @@ import { recordConversion } from '../finance/fx.js';
 import { parseMinor, validateCurrency } from '../finance/money.js';
 import type {
   PostingInput,
+  PostingHook,
   TransferInput,
   RefundInput,
   TransactionListOptions,
@@ -256,29 +257,46 @@ function requestKey(value: unknown): string {
     throw invalid();
   return value;
 }
+export function normalizePostingBody(
+  body: unknown,
+): PostingInput | TransferInput | RefundInput {
+  const raw = fields(
+    body,
+    (body as { type?: unknown })?.type === 'transfer'
+      ? transferKeys
+      : (body as { type?: unknown })?.type === 'refund'
+        ? refundKeys
+        : inputKeys,
+  );
+  return raw.type === 'transfer'
+    ? transfer(raw)
+    : raw.type === 'refund'
+      ? refund(raw)
+      : posting(raw);
+}
 @Injectable()
 export class TransactionsService {
   constructor(private readonly repository: PostingRepository) {}
   create(identity: Identity, householdId: string, body: unknown, key: unknown) {
-    const raw = fields(
-      body,
-      (body as { type?: unknown })?.type === 'transfer'
-        ? transferKeys
-        : (body as { type?: unknown })?.type === 'refund'
-          ? refundKeys
-          : inputKeys,
-    );
-    const normalized =
-      raw.type === 'transfer'
-        ? transfer(raw)
-        : raw.type === 'refund'
-          ? refund(raw)
-          : posting(raw);
     return this.repository.post(
       identity,
       householdId,
-      normalized,
+      normalizePostingBody(body),
       requestKey(key),
+    );
+  }
+  postImport(
+    identity: Identity,
+    householdId: string,
+    input: PostingInput | TransferInput | RefundInput,
+    hook: PostingHook,
+  ) {
+    return this.repository.post(
+      identity,
+      householdId,
+      input,
+      crypto.randomUUID(),
+      hook,
     );
   }
   edit(identity: Identity, householdId: string, id: string, body: unknown) {

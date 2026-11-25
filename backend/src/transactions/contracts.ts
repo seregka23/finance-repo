@@ -114,3 +114,8 @@ export interface TransactionListOptions {
   ownerMemberId?: string;
   currency?: Currency;
 }
+
+export type PostingHook = (
+  transactionId: string,
+  gate: string,
+) => D1PreparedStatement[];

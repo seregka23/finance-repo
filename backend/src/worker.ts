@@ -66,7 +66,10 @@ function initialize(): Promise<INestApplication> {
       const extractionParser = express.json({ limit: '1500kb' });
       // A wrapper avoids Nest mistaking this route-local parser for its global parser.
       app.use(
-        '/api/v1/households/:householdId/imports/extract',
+        [
+          '/api/v1/households/:householdId/imports/extract',
+          '/api/v1/households/:householdId/imports/preview',
+        ],
         (
           req: express.Request,
           res: express.Response,

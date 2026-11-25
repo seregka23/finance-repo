@@ -1,0 +1,393 @@
+<div class="pagehead">
+  <div>
+    <h1 tabindex="-1">{{ i18n.t('Import transactions') }}</h1>
+    <p>{{ i18n.t('Review recognized details before posting.') }}</p>
+  </div>
+  <a class="btn" routerLink="/transactions" [queryParams]="{ create: 1 }">{{
+    i18n.t('Enter manually')
+  }}</a>
+</div>
+@if (!api.selectedId()) {
+  <section class="panel">
+    <h2>{{ i18n.t('Create a household first') }}</h2>
+    <a class="btn" routerLink="/settings">{{ i18n.t('Go to household settings') }}</a>
+  </section>
+} @else {
+  @if (error()) {
+    <div class="alert" role="alert">
+      {{ i18n.t(error()) }}
+      @if (retryKind()) {
+        <button class="textbtn" type="button" (click)="retry()" [disabled]="busy()">
+          {{ i18n.t('Retry') }}
+        </button>
+      }
+    </div>
+  }
+  @if (success()) {
+    <div class="notice" role="status">
+      {{ i18n.t(success()) }} <a routerLink="/transactions">{{ i18n.t('View transactions') }}</a>
+    </div>
+  }
+  @if (loading()) {
+    <p role="status">{{ i18n.t('Loading…') }}</p>
+  }
+  <div class="layout">
+    <div class="stack">
+      <section class="panel">
+        <h2>{{ i18n.t('Add a source') }}</h2>
+        <p class="sub">
+          {{
+            i18n.t('Text and images are processed for recognition and are not saved as raw files.')
+          }}
+        </p>
+        <form [formGroup]="source" (ngSubmit)="preview()" class="form">
+          <label
+            >{{ i18n.t('Import source')
+            }}<select class="field" formControlName="sourceType">
+              <option value="sms">{{ i18n.t('Bank SMS') }}</option>
+              <option value="screenshot">{{ i18n.t('Screenshot') }}</option>
+              <option value="receipt">{{ i18n.t('Receipt') }}</option>
+            </select></label
+          >
+          @if (source.controls.sourceType.value === 'sms') {
+            <label
+              >{{ i18n.t('Bank SMS')
+              }}<textarea
+                class="field"
+                formControlName="text"
+                rows="5"
+                maxlength="12000"
+              ></textarea>
+            </label>
+          } @else {
+            <p class="sub">{{ i18n.t('JPEG, PNG or WebP, up to 1 MiB.') }}</p>
+            <label
+              >{{ i18n.t('Choose image')
+              }}<input
+                class="field"
+                #sourceFile
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                (change)="fileChanged($event)" /></label
+            ><label
+              >{{ i18n.t('Take photo')
+              }}<input
+                class="field"
+                #sourceFile
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                capture="environment"
+                (change)="fileChanged($event)"
+            /></label>
+          }
+          <button class="btn primary" type="submit" [disabled]="busy()">
+            {{ i18n.t(busy() ? 'Processing…' : 'Preview and save') }}
+          </button>
+        </form>
+      </section>
+      <section class="panel">
+        <h2>{{ i18n.t('Saved drafts') }}</h2>
+        <p class="sub">{{ i18n.t('The latest 50 imports are shown.') }}</p>
+        @if (!drafts().length && !loading()) {
+          <p class="empty">{{ i18n.t('No saved drafts.') }}</p>
+        }
+        @for (d of drafts(); track d.id) {
+          <div class="draft-row">
+            <span>{{ i18n.t(d.sourceType) }} · {{ d.createdAt }} · {{ i18n.t(d.status) }}</span
+            ><button class="btn" type="button" [disabled]="busy()" (click)="open(d.id)">
+              {{ i18n.t('Review') }}
+            </button>
+          </div>
+        }
+      </section>
+    </div>
+    @if (current(); as d) {
+      <section class="panel review">
+        <h2 id="review-heading" tabindex="-1">{{ i18n.t('Review draft') }}</h2>
+        @if (d.status === 'confirmed') {
+          <p>{{ i18n.t('This import has already been confirmed.') }}</p>
+          <a class="btn" routerLink="/transactions">{{ i18n.t('View transactions') }}</a>
+        } @else {
+          <p>
+            {{ i18n.t('Settlement status') }}: <strong>{{ i18n.t(d.draft.status) }}</strong>
+          </p>
+          @if (d.draft.status === 'declined') {
+            <div class="alert" role="alert">
+              {{ i18n.t('Declined transactions cannot be confirmed.') }}
+            </div>
+          }
+          @if (d.reviewFlags.length) {
+            <ul class="sub">
+              @for (flag of d.reviewFlags; track flag) {
+                <li>{{ flagLabel(flag) }}</li>
+              }
+            </ul>
+          }
+          <div class="facts">
+            <p>
+              {{ i18n.t('Original purchase') }}:
+              <strong>{{ money(d.draft.purchaseAmountMinor, d.draft.purchaseCurrency) }}</strong>
+            </p>
+            <p>
+              {{ i18n.t('Actual debit') }}:
+              <strong>{{ money(d.draft.debitAmountMinor, d.draft.debitCurrency) }}</strong>
+            </p>
+            <p>
+              {{ i18n.t('Recognized fee') }}:
+              <strong>{{
+                money(d.draft.feeMinor, d.draft.debitCurrency || d.draft.currency)
+              }}</strong>
+            </p>
+          </div>
+          @if (d.possibleDuplicates.length) {
+            <div class="notice">
+              <strong>{{ i18n.t('Possible duplicates') }}</strong>
+              @for (duplicate of d.possibleDuplicates; track duplicate.id) {
+                <p>
+                  {{ duplicate.transactionDate }} · {{ duplicate.merchant || '—' }} ·
+                  {{ money(duplicate.amountMinor, duplicate.currency) }}
+                </p>
+              }
+            </div>
+          }
+          <form [formGroup]="form" (ngSubmit)="confirm('post')" class="form">
+            <label
+              >{{ i18n.t('Type')
+              }}<select class="field" formControlName="type">
+                <option value="">{{ i18n.t('Choose type') }}</option>
+                <option
+                  value="expense"
+                  [disabled]="d.draft.type === 'transfer' || d.draft.type === 'refund'"
+                >
+                  {{ i18n.t('expense') }}
+                </option>
+                <option
+                  value="income"
+                  [disabled]="d.draft.type === 'transfer' || d.draft.type === 'refund'"
+                >
+                  {{ i18n.t('income') }}
+                </option>
+                <option
+                  value="transfer"
+                  [disabled]="
+                    (d.draft.type === 'transfer' || d.draft.type === 'refund') &&
+                    d.draft.type !== 'transfer'
+                  "
+                >
+                  {{ i18n.t('transfer') }}
+                </option>
+                <option
+                  value="refund"
+                  [disabled]="
+                    (d.draft.type === 'transfer' || d.draft.type === 'refund') &&
+                    d.draft.type !== 'refund'
+                  "
+                >
+                  {{ i18n.t('refund') }}
+                </option>
+              </select></label
+            >
+            <label
+              >{{ i18n.t('Date') }}<input class="field" type="date" formControlName="date"
+            /></label>
+            @if (form.controls.type.value === 'transfer') {
+              <label
+                >{{ i18n.t('From account')
+                }}<select class="field" formControlName="fromAccountId">
+                  <option value="">{{ i18n.t('Choose account') }}</option>
+                  @for (a of active(); track a.id) {
+                    <option [value]="a.id">{{ a.name }} · {{ a.currency }}</option>
+                  }
+                </select></label
+              >
+              <label
+                >{{ i18n.t('To account')
+                }}<select class="field" formControlName="toAccountId">
+                  <option value="">{{ i18n.t('Choose account') }}</option>
+                  @for (a of active(); track a.id) {
+                    <option [value]="a.id">{{ a.name }} · {{ a.currency }}</option>
+                  }
+                </select></label
+              >
+              <label
+                >{{ i18n.t('Debit amount')
+                }}<input class="field" inputmode="decimal" formControlName="debitAmount" /></label
+              ><label
+                >{{ i18n.t('Credit amount')
+                }}<input class="field" inputmode="decimal" formControlName="creditAmount"
+              /></label>
+              <label
+                >{{ i18n.t('Fee amount (optional)')
+                }}<input class="field" inputmode="decimal" formControlName="fee"
+              /></label>
+              @if (form.controls.fee.value) {
+                <label
+                  >{{ i18n.t('Fee category')
+                  }}<select class="field" formControlName="feeCategoryId">
+                    <option value="">{{ i18n.t('Choose category') }}</option>
+                    @for (c of eligible('expense'); track c.id) {
+                      <option [value]="c.id">{{ c.name }}</option>
+                    }
+                  </select></label
+                >
+                @if (account(form.controls.fromAccountId.value)?.currency !== 'RSD') {
+                  <label
+                    >{{ i18n.t('Fee exchange rate')
+                    }}<input class="field" formControlName="feeRate" inputmode="decimal" /></label
+                  ><label
+                    >{{ i18n.t('Rate source')
+                    }}<input class="field" formControlName="feeRateSource"
+                  /></label>
+                }
+              }
+            } @else {
+              @if (form.controls.type.value === 'refund') {
+                <label
+                  >{{ i18n.t('Purchase')
+                  }}<select class="field" formControlName="purchaseTransactionId">
+                    <option value="">{{ i18n.t('Choose purchase') }}</option>
+                    @for (p of expenses(); track p.id) {
+                      <option [value]="p.id">
+                        {{ p.transactionDate }} · {{ p.merchant || p.id }} ·
+                        {{ money(p.amountMinor || null, p.currency || null) }}
+                      </option>
+                    }
+                  </select></label
+                >
+              }
+              <label
+                >{{ i18n.t('Account')
+                }}<select class="field" formControlName="accountId">
+                  <option value="">{{ i18n.t('Choose account') }}</option>
+                  @for (a of active(); track a.id) {
+                    <option [value]="a.id">{{ a.name }} · {{ a.currency }}</option>
+                  }
+                </select></label
+              >
+              <label
+                >{{ i18n.t('Amount')
+                }}<input class="field" formControlName="amount" inputmode="decimal"
+              /></label>
+              @if (form.controls.type.value !== 'refund') {
+                <label
+                  >{{ i18n.t('Category')
+                  }}<select class="field" formControlName="categoryId">
+                    <option value="">{{ i18n.t('Choose category') }}</option>
+                    @for (c of eligible(form.controls.type.value); track c.id) {
+                      <option [value]="c.id">{{ c.name }}</option>
+                    }
+                  </select></label
+                >
+                @if (
+                  account(form.controls.accountId.value) &&
+                  account(form.controls.accountId.value)?.currency !== 'RSD'
+                ) {
+                  <label
+                    >{{ i18n.t('Exchange rate')
+                    }}<input
+                      class="field"
+                      inputmode="decimal"
+                      formControlName="exchangeRate" /></label
+                  ><label
+                    >{{ i18n.t('Rate source')
+                    }}<input class="field" formControlName="exchangeRateSource"
+                  /></label>
+                }
+              }
+            }
+            @if (
+              !active().length ||
+              (form.controls.type.value === 'transfer'
+                ? !form.controls.fromAccountId.value
+                : !form.controls.accountId.value)
+            ) {
+              <a routerLink="/accounts" [queryParams]="{ create: 1, importDraft: d.id }">{{
+                i18n.t('Add account and return to draft')
+              }}</a>
+            }
+            <label>{{ i18n.t('Merchant') }}<input class="field" formControlName="merchant" /></label
+            ><label
+              >{{ i18n.t('Note') }}<textarea class="field" formControlName="note"></textarea>
+            </label>
+            <h3>{{ i18n.t('Receipt items') }}</h3>
+            @for (item of items.controls; track item; let i = $index) {
+              <fieldset [formGroup]="item">
+                <legend>{{ i18n.t('Item') }} {{ i + 1 }}</legend>
+                <label
+                  >{{ i18n.t('Name')
+                  }}<input class="field" formControlName="name" maxlength="200" /></label
+                ><label
+                  >{{ i18n.t('Quantity')
+                  }}<input class="field" formControlName="quantity" inputmode="decimal" /></label
+                ><label
+                  >{{ i18n.t('Unit price')
+                  }}<input class="field" formControlName="unitPrice" inputmode="decimal" /></label
+                ><label
+                  >{{ i18n.t('Line total')
+                  }}<input class="field" formControlName="amount" inputmode="decimal" /></label
+                ><button class="btn" type="button" (click)="removeItem(i)">
+                  {{ i18n.t('Remove item') }}
+                </button>
+              </fieldset>
+            }
+            <button class="btn" type="button" (click)="addItem()">{{ i18n.t('Add item') }}</button>
+            @if (d.draft.status === 'pending' || d.draft.status === 'unknown') {
+              <label class="check"
+                ><input type="checkbox" formControlName="settlementConfirmed" />{{
+                  i18n.t('I confirm this transaction has settled.')
+                }}</label
+              >
+            }
+            @if (d.possibleDuplicates.length) {
+              <label class="check"
+                ><input type="checkbox" formControlName="keepSeparate" />{{
+                  i18n.t('I reviewed the possible duplicates and want to keep this separate.')
+                }}</label
+              >
+            }
+            <button
+              class="btn primary"
+              type="submit"
+              [disabled]="busy() || d.draft.status === 'declined'"
+            >
+              {{ i18n.t(busy() ? 'Saving…' : 'Confirm transaction') }}
+            </button>
+            @if (d.sourceType === 'receipt' && (!d.draft.type || d.draft.type === 'expense')) {
+              <h3>{{ i18n.t('Attach to an existing expense') }}</h3>
+              <p class="sub">
+                {{ i18n.t('This adds receipt items without creating another debit.') }}
+              </p>
+              <label
+                >{{ i18n.t('Existing expense')
+                }}<select class="field" formControlName="existingExpenseId">
+                  <option value="">{{ i18n.t('Choose expense') }}</option>
+                  @for (p of attachmentOptions(); track p.id) {
+                    <option [value]="p.id">
+                      {{ p.transactionDate }} · {{ p.merchant || p.id }} ·
+                      {{ money(p.amountMinor || null, p.currency || null) }}
+                    </option>
+                  }
+                </select></label
+              ><button
+                class="btn"
+                type="button"
+                [disabled]="busy() || d.draft.status === 'declined'"
+                (click)="confirm('attach')"
+              >
+                {{ i18n.t('Attach receipt') }}
+              </button>
+            }
+            @if (
+              expenseCursor() &&
+              (form.controls.type.value === 'refund' || d.sourceType === 'receipt')
+            ) {
+              <button class="btn" type="button" (click)="moreExpenses()">
+                {{ i18n.t('Load more purchases') }}
+              </button>
+            }
+          </form>
+        }
+      </section>
+    }
+  </div>
+}

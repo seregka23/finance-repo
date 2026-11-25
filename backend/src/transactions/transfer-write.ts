@@ -1,3 +1,4 @@
+import type { PostingHook } from './contracts.js';
 import type { Identity } from '../auth/auth.js';
 import { unavailable } from '../auth/auth.js';
 import { recordConversion } from '../finance/fx.js';
@@ -33,6 +34,7 @@ export class TransferWrite {
     h: string,
     input: TransferInput,
     key: string,
+    hook?: PostingHook,
   ): Promise<TransferRecord> {
     const id = crypto.randomUUID(),
       claim = crypto.randomUUID(),
@@ -220,6 +222,7 @@ export class TransferWrite {
         audit,
         claim,
       ),
+      ...(hook ? hook(id, gate) : []),
       this.stmt(
         `INSERT INTO posting_replay_checks(household_id,member_id,request_key) VALUES(?,${member},?)`,
         h,

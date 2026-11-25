@@ -3,6 +3,9 @@
     <h1 tabindex="-1">{{ i18n.t('Transactions') }}</h1>
     <p>{{ i18n.t('Household activity') }}</p>
   </div>
+  @if (api.selectedId()) {
+    <a class="btn" routerLink="/transactions/import">{{ i18n.t('Import transaction') }}</a>
+  }
   @if (api.selectedId() && active().length) {
     <button
       class="btn primary"
@@ -435,8 +438,7 @@
           </div>
         }
         <div class="reserve-field">
-          <label for="transaction-reserve-id">{{ i18n.t('Reserve (optional)') }}</label
-          ><select
+          <label for="transaction-reserve-id">{{ i18n.t('Reserve (optional)') }}</label><select
             id="transaction-reserve-id"
             class="field"
             formControlName="reserveId"

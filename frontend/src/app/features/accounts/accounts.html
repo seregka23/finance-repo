@@ -298,6 +298,24 @@
         <option value="business">{{ i18n.t('Business') }}</option>
       </select></label
     >
+    <label
+      >{{ i18n.t('Bank name (optional)')
+      }}<input class="field" formControlName="bankName" maxlength="100" autocomplete="off"
+    /></label>
+    <label
+      >{{ i18n.t('Last four card digits (optional)')
+      }}<input
+        class="field"
+        formControlName="cardLastFour"
+        inputmode="numeric"
+        maxlength="4"
+        autocomplete="off"
+    /></label>
+    <p class="hint">
+      {{
+        i18n.t('Enter both fields to help match bank messages. Never enter the full card number.')
+      }}
+    </p>
     @if (!editing()) {
       <label
         >{{ i18n.t('Opening balance')
