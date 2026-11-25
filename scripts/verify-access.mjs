@@ -20,6 +20,9 @@ const port = portProbe.address().port;
 await new Promise((resolve) => portProbe.close(resolve));
 const appOrigin = `http://127.0.0.1:${port}`;
 const serving = process.argv.includes("--serve");
+const categoryProvider = process.argv.includes("--gemini")
+  ? "gemini"
+  : "openai";
 const children = new Set();
 const logs = [];
 const env = {
@@ -141,10 +144,11 @@ async function check(name, fn) {
 async function api(
   path,
   sessionToken,
-  { method = "GET", body, status = 200, origin = appOrigin } = {},
+  { method = "GET", body, status = 200, origin = appOrigin, key } = {},
 ) {
   const headers = {};
   if (sessionToken) headers.Cookie = `finance_session=${sessionToken}`;
+  if (key) headers["Idempotency-Key"] = key;
   if (!["GET", "HEAD"].includes(method) && origin !== null)
     headers.Origin = origin;
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -186,9 +190,38 @@ const prisma = new PrismaService(env.DB);
 const auth = new AuthService(env.DB,prisma);
 const browserTokens = {};
 let recognitionCalls = 0;
+let categoryCalls = 0;
 const originalFetch = globalThis.fetch.bind(globalThis);
 globalThis.fetch = async (target, options) => {
   const address = typeof target === 'string' ? target : target instanceof URL ? target.href : target.url;
+  if (address === 'https://api.openai.com/v1/decisions' || address === 'https://generativelanguage.googleapis.com/v1beta/decisions') {
+    categoryCalls++;
+    const openai = address.startsWith('https://api.openai.com/');
+    if (env.CATEGORY_DECISION_PROVIDER !== (openai ? 'openai' : 'gemini')) return new Response(null, {status: 502});
+    const body = JSON.parse(options.body);
+    const question = openai ? body.questions.find(q => q.name === 'category') : body.questions.category;
+    const criteria = openai ? Object.fromEntries(question.choices.map(c => [c.value, c.description])) : question.criteria;
+    const input = JSON.stringify(body.input);
+    const sent = JSON.stringify(body);
+    if (body.model !== (openai ? 'gpt-6-luna' : 'gemini-decision-1') || question.type !== 'choice' ||
+        !Object.hasOwn(criteria, 'needs_review') ||
+        ['Fixture private SMS', '4321', '12500', '2026-01-03', 'Fixture excluded'].some(value => sent.includes(value)))
+      return new Response(null, {status: 400});
+    if (input.includes('Fixture decision provider failure')) return Response.json({error:'fixture-private-category-error'}, {status:429});
+    const eligible = Object.keys(criteria).filter(value => value !== 'needs_review');
+    if (eligible.length !== 2) return new Response(null, {status: 400});
+    const first = eligible.find(value => criteria[value]?.includes('Fixture groceries'));
+    if (!first || !eligible.some(value => criteria[value]?.includes('Fixture transit')) || eligible.some(value => /^[a-f0-9-]{36}$/.test(value)))
+      return new Response(null, {status: 400});
+    const choice = input.includes('Fixture decision unoffered') ? 'unoffered' : input.includes('Fixture decision review') ? 'needs_review' : first;
+    const probability = input.includes('Fixture decision low') ? 0.51 : 0.9;
+    const alternatives = Object.keys(criteria).filter(value => value !== choice);
+    const probabilities = {[choice]:probability, ...Object.fromEntries(alternatives.map(value => [value, (1 - probability) / alternatives.length]))};
+    return openai
+      ? Response.json({model:'gpt-6-luna',answers:[{type:'choice',name:'category',choice,confidence:probability,probabilities:Object.entries(probabilities).map(([value, probability]) => ({value,probability}))}]})
+      : Response.json({answers:{category:{type:'choice',choice,confidence:probability,probabilities}}});
+  }
+  if (new URL(address).hostname === 'generativelanguage.googleapis.com') return new Response(null, {status: 502});
   if (new URL(address).hostname !== 'api.openai.com') return originalFetch(target, options);
   recognitionCalls++;
   if (address !== 'https://api.openai.com/v1/responses') return new Response(null, {status: 502});
@@ -208,12 +241,18 @@ globalThis.fetch = async (target, options) => {
     items: receipt ? [{name:'Synthetic receipt item', quantity:'2', unitPriceMinor:'6250', amountMinor:'12500'}] : [],
   };
   if (input.includes('fixture-unknown-currency')) draft = {...draft, currency: null, debitCurrency: null};
+  for (const scenario of ['provider failure', 'unoffered', 'review', 'low']) {
+    if (input.includes('Fixture decision ' + scenario)) draft.merchant = 'Fixture decision ' + scenario;
+  }
+  if (input.includes('fixture-transfer')) draft.type = 'transfer';
+  if (input.includes('fixture-refund')) draft.type = 'refund';
   if (input.includes('fixture-unreadable')) draft = {...draft, type:null, status:'unknown', date:null, amountMinor:null, currency:null, merchant:null, cardLastFour:null, purchaseAmountMinor:null, purchaseCurrency:null, debitAmountMinor:null, debitCurrency:null};
   return Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(draft)}]}]});
 };
 export default { async fetch(request,bindings,context) {
   const url = new URL(request.url);
   if (url.pathname === '/_verification/recognition-calls') return Response.json(recognitionCalls);
+  if (url.pathname === '/_verification/category-calls') return Response.json(categoryCalls);
   if(url.pathname === '/_verification/sql' && request.method === 'POST') {
     const {sql} = await request.json();
     return Response.json(await env.DB.prepare(sql).all());
@@ -284,7 +323,11 @@ export default { async fetch(request,bindings,context) {
     JSON.stringify({
       name: "finance-access-verification",
       main: join(temporary, "worker.mjs"),
-      vars: { OPENAI_API_KEY: "fixture-only-no-live-provider" },
+      vars: {
+        OPENAI_API_KEY: "fixture-only-no-live-provider",
+        GEMINI_API_KEY: "fixture-only-no-live-provider",
+        CATEGORY_DECISION_PROVIDER: categoryProvider,
+      },
       compatibility_date: "2026-11-16",
       compatibility_flags: [
         "nodejs_compat",
@@ -767,6 +810,120 @@ async function verify() {
         !JSON.stringify(error).includes("fixture-private-provider-marker"),
       );
       assert.deepEqual(await snapshot(), before);
+    },
+  );
+  await check(
+    `category decisions use eligible choices and preserve manual posting (${categoryProvider})`,
+    async () => {
+      const householdPath = `/api/v1/households/${household.id}`;
+      const calls = () => api("/_verification/category-calls", owner);
+      const extract = (text) =>
+        api(`${householdPath}/imports/extract`, member, {
+          method: "POST",
+          body: { sourceType: "sms", text },
+        });
+      const createCategory = (
+        name,
+        type = "expense",
+        path = householdPath,
+        actor = member,
+      ) =>
+        api(`${path}/categories`, actor, {
+          method: "POST",
+          body: { name, type },
+          status: 201,
+        });
+      const skipped = { categoryId: null, provider: null, probability: null };
+      const initialCalls = await calls();
+      assert.deepEqual(
+        (await extract("Fixture category decision")).categoryDecision,
+        skipped,
+      );
+      assert.equal(await calls(), initialCalls);
+
+      const groceries = await createCategory("Fixture groceries");
+      const transit = await createCategory("Fixture transit");
+      const archived = await createCategory("Fixture excluded archived");
+      await api(`${householdPath}/categories/${archived.id}`, member, {
+        method: "PATCH",
+        body: { status: "archived" },
+      });
+      await createCategory("Fixture excluded income", "income");
+      await createCategory(
+        "Fixture excluded foreign",
+        "expense",
+        `/api/v1/households/${other.id}`,
+        stranger,
+      );
+
+      for (const text of [
+        "fixture-transfer",
+        "fixture-refund",
+        "fixture-declined",
+      ]) {
+        assert.deepEqual((await extract(text)).categoryDecision, skipped);
+      }
+      assert.equal(await calls(), initialCalls);
+
+      const suggestion = await extract(
+        "Fixture private SMS category selection",
+      );
+      assert.deepEqual(suggestion.categoryDecision, {
+        categoryId: groceries.id,
+        provider: categoryProvider,
+        probability: 0.9,
+      });
+      assert.equal(suggestion.eligibleForPosting, false);
+      for (const [scenario, probability] of [
+        ["low", 0.51],
+        ["review", 0.9],
+        ["unoffered", null],
+        ["provider failure", null],
+      ]) {
+        const result = await extract(`Fixture decision ${scenario}`);
+        assert.deepEqual(result.categoryDecision, {
+          categoryId: null,
+          provider: categoryProvider,
+          probability,
+        });
+        assert.ok(
+          !JSON.stringify(result).includes("fixture-private-category-error"),
+        );
+      }
+      assert.equal(await calls(), initialCalls + 5);
+
+      const account = await api(`${householdPath}/accounts`, member, {
+        method: "POST",
+        status: 201,
+        body: {
+          name: "Fixture manual posting account",
+          type: "cash",
+          currency: "RSD",
+          ownerMemberId: null,
+          designation: "personal",
+          openingBalanceMinor: "100000",
+          openingDate: "2026-01-01",
+        },
+      });
+      const posted = await api(`${householdPath}/transactions`, member, {
+        method: "POST",
+        status: 201,
+        key: randomUUID(),
+        body: {
+          type: "expense",
+          transactionDate: suggestion.draft.date,
+          accountId: account.id,
+          categoryId: transit.id,
+          amountMinor: suggestion.draft.amountMinor,
+          currency: suggestion.draft.currency,
+          exchangeRate: null,
+          exchangeRateSource: null,
+          merchant: null,
+          note: null,
+        },
+      });
+      assert.equal(posted.categoryId, transit.id);
+      assert.equal(await calls(), initialCalls + 5);
     },
   );
   await check(

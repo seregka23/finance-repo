@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExtractionService, parseInput, validateDraft } from './extraction.js';
 import type { HouseholdAccessService } from '../households/household-access.service.js';
+import type { CategoryDecisionService } from '../decisions/category-decision.js';
 import type { Identity } from '../auth/auth.types.js';
 const identity = { subject: 'user', email: 'u@example.com' } as Identity;
 const draft = {
@@ -23,7 +24,19 @@ const draft = {
 };
 const access = { get: vi.fn().mockResolvedValue({}) };
 const service = (key: string | null = 'synthetic') =>
-  new ExtractionService(key, access as unknown as HouseholdAccessService);
+  new ExtractionService(
+    key,
+    access as unknown as HouseholdAccessService,
+    {
+      decide: vi
+        .fn()
+        .mockResolvedValue({
+          categoryId: null,
+          provider: null,
+          probability: null,
+        }),
+    } as unknown as CategoryDecisionService,
+  );
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
@@ -82,7 +95,7 @@ describe('recognition boundary', () => {
       eligibleForPosting: false,
       reviewFlags: ['REVIEW_REQUIRED'],
     });
-    expect(access.get).toHaveBeenCalledTimes(2);
+    expect(access.get).toHaveBeenCalledTimes(3);
     const [url, opts] = fetchMock.mock.calls[0];
     expect(url).toBe('https://api.openai.com/v1/responses');
     const body = JSON.parse(opts.body);

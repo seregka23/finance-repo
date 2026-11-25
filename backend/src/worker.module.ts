@@ -36,6 +36,11 @@ import {
   ExtractionController,
   ExtractionService,
 } from './imports/extraction.js';
+import {
+  CATEGORY_DECISION_CONFIG,
+  CategoryDecisionService,
+  type CategoryDecisionConfig,
+} from './decisions/category-decision.js';
 import { DATABASE, HealthController } from './health.controller.js';
 
 @Module({
@@ -47,6 +52,7 @@ export class WorkerModule {
     database: D1Database,
     probeEnabled = false,
     extractionKey: string | null = null,
+    decisionConfig: CategoryDecisionConfig = {},
   ): DynamicModule {
     return {
       module: WorkerModule,
@@ -79,6 +85,8 @@ export class WorkerModule {
         PlansService,
         ReportsService,
         ExtractionService,
+        CategoryDecisionService,
+        { provide: CATEGORY_DECISION_CONFIG, useValue: decisionConfig },
         { provide: EXTRACTION_KEY, useValue: extractionKey },
         { provide: APP_FILTER, useClass: ApiErrorFilter },
         { provide: APP_GUARD, useClass: ApiAuthGuard },
