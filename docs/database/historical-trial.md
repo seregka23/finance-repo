@@ -20,11 +20,13 @@ Use the [synthetic snapshot](../../scripts/historical-trial/fixtures/synthetic.j
 | Categories | Stable ID, name and expense or income type. |
 | Transactions | Stable ID, business date, type, posting status, original amount and currency, account and applicable category. Preserve recorded RSD equivalent, rate and source where available. |
 | Transfers | One normalized transfer with stable ID, debit and credit legs, account IDs, original amounts and currencies. Provide each leg's source ID and any linked fee, including its own ID, amount and expense category. Use a leg or fee `date` when it differs from the transfer's date. |
-| Refunds | The original expense ID and account, amount and business date. Preserve the original conversion data where available. |
+| Refunds | The original expense ID and account, amount and business date. Supply a positive integer `allocationSequence` per purchase from the source or an agreed historical allocation order. Preserve the original conversion data where available. |
 | Plans | Stable ID, calendar month, expense category ID and RSD minor-unit limit. |
 | Reserves | Stable ID, linked account, name and dated movements with signed original minor amounts. Supply the transaction ID for any movement linked to a posting. |
 
 All amounts use exact decimal integer strings in minor units. Resolve cross-source references to IDs from the selected authoritative datasets during export preparation. Capture Notion and Supabase at a common cutoff or record an agreed equivalent watermark for each source. Resolve collisions, account matches and known transfer pairing before providing the normalized snapshot. Keep historical attachments and receipt lines in the source systems.
+
+Refund allocation uses the supplied sequence for historical FX rounding and the actual credit date for monthly reporting. A purchase with missing or duplicate posted refund sequences is flagged for reconciliation. Sequence gaps can represent voided refunds.
 
 ## Reconciliation
 

@@ -115,6 +115,7 @@
           "date": "2026-02-01",
           "accountId": "rsd-account",
           "purchaseId": "groceries",
+          "allocationSequence": 1,
           "amountMinor": "5000",
           "currency": "RSD"
         },

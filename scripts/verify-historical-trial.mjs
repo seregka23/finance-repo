@@ -108,12 +108,25 @@ fxRounding.datasets.supabase.transactions.push(
     rsdEquivalentMinor: "587",
   },
   {
+    id: "fx-refund-rounding-remainder",
+    type: "refund",
+    status: "posted",
+    date: "2026-01-30",
+    accountId: "eur-account",
+    purchaseId: "fx-purchase-rounding",
+    allocationSequence: 3,
+    amountMinor: "1",
+    currency: "EUR",
+    rsdEquivalentMinor: "118",
+  },
+  {
     id: "fx-refund-rounding",
     type: "refund",
     status: "posted",
     date: "2026-01-31",
     accountId: "eur-account",
     purchaseId: "fx-purchase-rounding",
+    allocationSequence: 1,
     amountMinor: "4",
     currency: "EUR",
     rsdEquivalentMinor: "469",
@@ -136,8 +149,30 @@ assert.equal(
   ).movement_date,
   "2026-01-31",
 );
+const remainderId = normalizedFx.plan.tables.import_references.find(
+  (row) => row.source_record_id === "fx-refund-rounding-remainder",
+).transaction_id;
+assert.equal(
+  normalizedFx.plan.tables.posting_details.find(
+    (row) => row.transaction_id === remainderId,
+  ).rsd_equivalent_minor,
+  "118",
+);
+assert.equal(
+  normalizedFx.plan.tables.refund_details.find(
+    (row) => row.transaction_id === remainderId,
+  ).allocation_sequence,
+  3,
+);
+delete fxRounding.datasets.supabase.transactions.at(-2).allocationSequence;
+assert.deepEqual(
+  normalizeSnapshot(fxRounding).exceptions.unresolved.map(
+    ({ reason }) => reason,
+  ),
+  ["invalid_refund_sequence", "invalid_refund_sequence"],
+);
 console.log(
-  "PASS partial refund keeps its actual date and exact historical conversion",
+  "PASS partial refunds keep actual dates and allocate FX in source sequence",
 );
 
 const mismatched = structuredClone(snapshot);

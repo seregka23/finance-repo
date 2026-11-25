@@ -237,6 +237,8 @@ export function normalizeSnapshot(snapshot) {
       "refund_currency_mismatch",
       "refund_exceeds_purchase",
       "refund_fx_mismatch",
+      "invalid_refund_sequence",
+      "unresolved_prior_refund",
       "duplicate_plan",
       "invalid_reserve",
       "invalid_reserve_movement",
@@ -397,7 +399,7 @@ export function normalizeSnapshot(snapshot) {
   const txnRows = records("transactions");
   const txnIds = new Set(txnRows.map((r) => r?.id).filter(validId)),
     auxiliaryIds = new Set();
-  const refunds = [];
+  const refundsByPurchase = new Map();
   function header(x, type, dt, cat, parent = null) {
     tables.transactions.push({
       id: x,
@@ -453,11 +455,14 @@ export function normalizeSnapshot(snapshot) {
         problem("unconfirmed", "transactions", i, "not_posted");
         return;
       }
-      if (!date(r.date)) throw Error("invalid_date");
       if (r.type === "refund") {
-        refunds.push({ r, i });
+        if (!validId(r.purchaseId)) throw Error("missing_purchase");
+        const refunds = refundsByPurchase.get(r.purchaseId) ?? [];
+        refunds.push({ r, i, sequence: r.allocationSequence });
+        refundsByPurchase.set(r.purchaseId, refunds);
         return;
       }
+      if (!date(r.date)) throw Error("invalid_date");
       if (r.type === "transfer") {
         if (!r.debit || !r.credit) {
           problem("unmatchedTransfers", "transactions", i, "missing_leg");
@@ -588,24 +593,16 @@ export function normalizeSnapshot(snapshot) {
       problem("unresolved", "transactions", i, e.message);
     }
   });
-  const refundTotals = new Map();
-  refunds.sort(
-    (a, b) => a.r.date.localeCompare(b.r.date) || a.r.id.localeCompare(b.r.id),
-  );
-  for (const { r, i } of refunds) {
+  function importRefund({ r, i, sequence }, allocatedAmount) {
     try {
+      if (!date(r.date)) throw Error("invalid_date");
       const p = ids.transactions.get(r.purchaseId);
       if (!p || p.type !== "expense") throw Error("missing_purchase");
       const cur = currency(r.currency),
         acct = account(r.accountId, cur),
         amt = integer(r.amountMinor, { positive: true });
       if (cur !== p.currency) throw Error("refund_currency_mismatch");
-      const current = refundTotals.get(r.purchaseId) ?? {
-        amount: 0n,
-        rsd: 0n,
-        sequence: 0,
-      };
-      const next = current.amount + BigInt(amt);
+      const next = allocatedAmount + BigInt(amt);
       if (next > BigInt(p.amount)) throw Error("refund_exceeds_purchase");
       let fx;
       if (
@@ -624,7 +621,7 @@ export function normalizeSnapshot(snapshot) {
             ? amt
             : (
                 convertAtRate(next, p.fx.rate) -
-                convertAtRate(current.amount, p.fx.rate)
+                convertAtRate(allocatedAmount, p.fx.rate)
               ).toString();
         if (
           r.rsdEquivalentMinor != null &&
@@ -640,22 +637,47 @@ export function normalizeSnapshot(snapshot) {
       }
       const x = id("transactions", r.id);
       posting(x, acct, p.categoryId, "refund", r.date, amt, cur, fx, p.id);
-      current.amount = next;
-      if (fx.rsd !== null) current.rsd += BigInt(fx.rsd);
-      current.sequence++;
-      refundTotals.set(r.purchaseId, current);
       tables.refund_details.push({
         transaction_id: x,
         ...prefix,
         purchase_transaction_id: p.id,
-        allocation_sequence: current.sequence,
+        allocation_sequence: sequence,
       });
       ids.transactions.set(r.id, { id: x, type: "refund" });
       ref("transactions", r.id, "transaction_id", x);
       if (cur !== "RSD" && (fx.rsd === null || fx.rate === null))
         problem("missingFx", "transactions", i, "refund_missing_fx");
+      return next;
     } catch (e) {
       problem("unresolved", "transactions", i, e.message);
+      return null;
+    }
+  }
+  for (const refunds of refundsByPurchase.values()) {
+    const sequences = new Set(refunds.map(({ sequence }) => sequence));
+    if (
+      sequences.size !== refunds.length ||
+      [...sequences].some(
+        (sequence) => !Number.isSafeInteger(sequence) || sequence < 1,
+      )
+    ) {
+      for (const { i } of refunds)
+        problem("unresolved", "transactions", i, "invalid_refund_sequence");
+      continue;
+    }
+    refunds.sort((a, b) => a.sequence - b.sequence);
+    let allocatedAmount = 0n;
+    for (const refund of refunds) {
+      if (allocatedAmount === null) {
+        problem(
+          "unresolved",
+          "transactions",
+          refund.i,
+          "unresolved_prior_refund",
+        );
+        continue;
+      }
+      allocatedAmount = importRefund(refund, allocatedAmount);
     }
   }
   records("plans").forEach((r, i) => {
