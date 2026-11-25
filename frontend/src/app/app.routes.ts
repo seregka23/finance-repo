@@ -16,6 +16,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/reserves/reserves').then((m) => m.Reserves),
   },
   {
+    path: 'transactions/import',
+    loadComponent: () =>
+      import('./features/import-review/import-review').then((m) => m.ImportReview),
+  },
+  {
     path: 'transactions',
     loadComponent: () => import('./features/transactions/transactions').then((m) => m.Transactions),
   },

@@ -256,6 +256,8 @@ export class Accounts {
       currency: row.currency,
       ownerMemberId: row.ownerMemberId ?? '',
       designation: row.designation,
+      bankName: row.bankName ?? '',
+      cardLastFour: row.cardLastFour ?? '',
     });
   }
   protected resetForm(): void {
@@ -267,6 +269,8 @@ export class Accounts {
       currency: 'RSD',
       ownerMemberId: '',
       designation: 'personal',
+      bankName: '',
+      cardLastFour: '',
       opening: '0',
       date: this.today(),
     });
@@ -285,12 +289,22 @@ export class Accounts {
       this.error.set('Choose an active owner or Household.');
       return;
     }
+    if (
+      !!v.bankName.trim() !== !!v.cardLastFour ||
+      (v.cardLastFour && !/^\d{4}$/.test(v.cardLastFour)) ||
+      v.bankName.trim().length > 100
+    ) {
+      this.error.set('Enter a bank name and exactly four card digits, or leave both blank.');
+      return;
+    }
     const input: AccountInput = {
       name: v.name.trim(),
       type: v.type,
       currency: row?.currencyLocked ? row.currency : v.currency,
       ownerMemberId: v.ownerMemberId || null,
       designation: v.designation,
+      bankName: v.bankName.trim() || null,
+      cardLastFour: v.cardLastFour || null,
     };
     await this.run(
       async (id) =>
@@ -307,6 +321,9 @@ export class Accounts {
         this.resetForm();
         this.selected.set(saved);
         this.success.set(row ? 'Account updated.' : 'Account created.');
+        const resume = this.route.snapshot.queryParamMap.get('importDraft');
+        if (!row && resume)
+          void this.router.navigate(['/transactions/import'], { queryParams: { draft: resume } });
         void this.open(saved);
       },
     );

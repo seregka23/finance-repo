@@ -5,6 +5,7 @@ import type { Database } from '../households/households.js';
 import { recordConversion } from '../finance/fx.js';
 import type {
   PostingInput,
+  PostingHook,
   ReserveFunding,
   TransactionRecord,
   TransferInput,
@@ -496,6 +497,7 @@ export class PostingRepository {
     householdId: string,
     input: PostingInput | TransferInput | RefundInput,
     requestKey: string,
+    hook?: PostingHook,
   ): Promise<TransactionRecord | TransferRecord | RefundRecord> {
     if (input.type === 'refund')
       return new RefundWrite(this.db, this.prisma, this.batch.bind(this)).post(
@@ -503,6 +505,7 @@ export class PostingRepository {
         householdId,
         input,
         requestKey,
+        hook,
       );
     if (input.type === 'transfer')
       return new TransferWrite(this.db, this.batch.bind(this)).post(
@@ -510,6 +513,7 @@ export class PostingRepository {
         householdId,
         input,
         requestKey,
+        hook,
       );
     const id = crypto.randomUUID(),
       claim = crypto.randomUUID(),
@@ -700,6 +704,7 @@ export class PostingRepository {
             ),
           ]
         : []),
+      ...(hook ? hook(id, gate) : []),
       this.stmt(
         `INSERT INTO posting_replay_checks(household_id,member_id,request_key) VALUES(?,${member},?)`,
         householdId,

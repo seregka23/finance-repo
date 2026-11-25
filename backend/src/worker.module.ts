@@ -41,6 +41,10 @@ import {
   CategoryDecisionService,
   type CategoryDecisionConfig,
 } from './decisions/category-decision.js';
+import {
+  ImportReviewController,
+  ImportReviewService,
+} from './imports/import-review.js';
 import { DATABASE, HealthController } from './health.controller.js';
 
 @Module({
@@ -67,6 +71,7 @@ export class WorkerModule {
         PlansController,
         ReportsController,
         ExtractionController,
+        ImportReviewController,
         ...(probeEnabled ? [InfrastructureProbeController] : []),
       ],
       providers: [
@@ -85,6 +90,7 @@ export class WorkerModule {
         PlansService,
         ReportsService,
         ExtractionService,
+        ImportReviewService,
         CategoryDecisionService,
         { provide: CATEGORY_DECISION_CONFIG, useValue: decisionConfig },
         { provide: EXTRACTION_KEY, useValue: extractionKey },

@@ -28,13 +28,11 @@ const service = (key: string | null = 'synthetic') =>
     key,
     access as unknown as HouseholdAccessService,
     {
-      decide: vi
-        .fn()
-        .mockResolvedValue({
-          categoryId: null,
-          provider: null,
-          probability: null,
-        }),
+      decide: vi.fn().mockResolvedValue({
+        categoryId: null,
+        provider: null,
+        probability: null,
+      }),
     } as unknown as CategoryDecisionService,
   );
 afterEach(() => {
@@ -110,6 +108,45 @@ describe('recognition boundary', () => {
     expect(new Headers(opts.headers).get('authorization')).toBe(
       'Bearer synthetic',
     );
+  });
+  it('rejects multiline verbatim SMS echoes before invoking category decisions', async () => {
+    const raw = 'Private notification\nverbatim';
+    const decision = { decide: vi.fn() };
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              status: 'completed',
+              output: [
+                {
+                  type: 'message',
+                  content: [
+                    {
+                      type: 'output_text',
+                      text: JSON.stringify({ ...draft, merchant: raw }),
+                    },
+                  ],
+                },
+              ],
+            }),
+          ),
+        ),
+    );
+    const extraction = new ExtractionService(
+      'synthetic',
+      access as unknown as HouseholdAccessService,
+      decision as unknown as CategoryDecisionService,
+    );
+    await expect(
+      extraction.extract(identity, 'h', { sourceType: 'sms', text: raw }),
+    ).rejects.toMatchObject({
+      status: 422,
+      response: { error: { code: 'EXTRACTION_UNREADABLE' } },
+    });
+    expect(decision.decide).not.toHaveBeenCalled();
   });
   it('redacts sensitive identifiers and flags unfinalized transfers and refunds', () => {
     const result = validateDraft({

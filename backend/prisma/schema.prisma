@@ -53,6 +53,8 @@ model Account {
   type String
   currency String
   ownerMemberId String? @map("owner_member_id")
+  bankName String? @map("bank_name")
+  cardLastFour String? @map("card_last_four")
   designation String
   version BigInt @default(1)
   currencyLocked Int @default(0) @map("currency_locked")
@@ -185,6 +187,7 @@ model ImportDraft {
   authorMemberId String @map("author_member_id")
   sourceType String @map("source_type")
   sourceHash String @map("source_hash")
+  confirmationHash String? @map("confirmation_hash")
   extractedFieldsJson String @map("extracted_fields_json")
   status String @default("pending")
   suggestedAccountId String? @map("suggested_account_id")

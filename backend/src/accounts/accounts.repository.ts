@@ -10,7 +10,7 @@ import type {
   MovementPage,
 } from './accounts.types.js';
 
-const select = `SELECT a.id,a.name,a.type,a.currency,a.owner_member_id AS ownerMemberId,a.designation,a.status,a.version,a.currency_locked AS currencyLocked,a.created_at AS createdAt,a.updated_at AS updatedAt,
+const select = `SELECT a.id,a.name,a.type,a.currency,a.owner_member_id AS ownerMemberId,a.designation,a.bank_name AS bankName,a.card_last_four AS cardLastFour,a.status,a.version,a.currency_locked AS currencyLocked,a.created_at AS createdAt,a.updated_at AS updatedAt,
  CAST((SELECT COALESCE(SUM(amount_minor),0) FROM account_movements WHERE household_id=a.household_id AND account_id=a.id) AS TEXT) AS balanceMinor,
  CAST((SELECT COALESCE(SUM(amount_minor),0) FROM reserve_movements WHERE household_id=a.household_id AND account_id=a.id) AS TEXT) AS reservedMinor FROM accounts a`;
 function translate(e: unknown): never {
@@ -194,7 +194,7 @@ export class AccountsRepository {
       this.access(identity, householdId),
       this.check(householdId, id, null, input.ownerMemberId, 'create'),
       this.stmt(
-        "INSERT INTO accounts(id,household_id,name,type,currency,owner_member_id,designation,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'active',?,?)",
+        "INSERT INTO accounts(id,household_id,name,type,currency,owner_member_id,designation,bank_name,card_last_four,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'active',?,?)",
         id,
         householdId,
         input.name,
@@ -202,6 +202,8 @@ export class AccountsRepository {
         input.currency,
         input.ownerMemberId,
         input.designation,
+        input.bankName ?? null,
+        input.cardLastFour ?? null,
         now,
         now,
       ),
@@ -242,12 +244,16 @@ export class AccountsRepository {
       this.access(identity, householdId),
       this.check(householdId, id, version, input.ownerMemberId, 'update'),
       this.stmt(
-        'UPDATE accounts SET name=?,type=?,currency=?,owner_member_id=?,designation=?,version=version+1,updated_at=? WHERE household_id=? AND id=? AND version=?',
+        'UPDATE accounts SET name=?,type=?,currency=?,owner_member_id=?,designation=?,bank_name=CASE WHEN ? THEN ? ELSE bank_name END,card_last_four=CASE WHEN ? THEN ? ELSE card_last_four END,version=version+1,updated_at=? WHERE household_id=? AND id=? AND version=?',
         input.name,
         input.type,
         input.currency,
         input.ownerMemberId,
         input.designation,
+        input.bankName !== undefined ? 1 : 0,
+        input.bankName ?? null,
+        input.cardLastFour !== undefined ? 1 : 0,
+        input.cardLastFour ?? null,
         now,
         householdId,
         id,

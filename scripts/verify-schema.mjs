@@ -227,10 +227,9 @@ async function seed() {
       source_type: "receipt",
       source_hash: `hash-${suffix}`,
       extracted_fields_json: "{}",
-      status: "confirmed",
-      transaction_id: `transaction-${suffix}`,
       ...dated,
     });
+    await run("UPDATE import_drafts SET status='confirmed',transaction_id=?,confirmation_hash=? WHERE id=?", `transaction-${suffix}`, "a".repeat(64), `draft-${suffix}`);
   }
   const household_id = "house-a";
   Object.assign(fixtures, {
@@ -381,6 +380,7 @@ async function verify() {
           "0008_transfers.sql",
           "0009_refunds.sql",
           "0010_reserves.sql",
+        "0011_import_review.sql",
         ],
       );
       assert.deepEqual(
@@ -486,7 +486,7 @@ async function verify() {
     "cross-household ownership, authors and financial/import relationships are rejected",
     async () => {
       for (const [table, patch] of scopeCases)
-        await rejects(table, row(table, patch));
+        await rejects(table, row(table, patch), table === "receipt_items" ? /receipt_draft_invalid/i : /FOREIGN KEY constraint failed/i);
     },
   );
   await check(
@@ -508,6 +508,7 @@ async function verify() {
       await rejects(
         "receipt_items",
         row("receipt_items", { transaction_id: "second-transaction-a" }),
+        /receipt_draft_invalid/i,
       );
     },
   );

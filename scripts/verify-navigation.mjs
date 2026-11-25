@@ -716,6 +716,7 @@ async function run() {
         { "Idempotency-Key": "browser-refund-purchase" },
       );
       await page.goto(`${base}/transactions`);
+      await page.locator("#household-selector").selectOption(householdId);
       await page
         .getByLabel("Household", { exact: true })
         .selectOption(selected);
@@ -1190,6 +1191,165 @@ async function run() {
           () => document.documentElement.scrollWidth <= innerWidth,
         ),
       );
+    },
+  );
+  await check(
+    "mobile SMS import and receipt attachment with real saved drafts",
+    async () => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      const householdId = await page
+        .getByLabel("Household", { exact: true })
+        .inputValue();
+      const path = `/households/${householdId}`;
+      const account = await api(
+        `${path}/accounts`,
+        "POST",
+        {
+          name: "Browser import card",
+          type: "card",
+          currency: "RSD",
+          ownerMemberId: null,
+          designation: "personal",
+          openingBalanceMinor: "50000",
+          openingDate: "2026-01-01",
+          bankName: "Fixture Bank",
+          cardLastFour: "4321",
+        },
+        201,
+      );
+      const category = await api(
+        `${path}/categories`,
+        "POST",
+        {
+          name: "Browser import category",
+          type: "expense",
+        },
+        201,
+      );
+      await page.goto(`${base}/transactions`);
+      await page
+        .getByRole("link", { name: "Import transaction", exact: true })
+        .click();
+      await page
+        .getByRole("heading", { name: "Import transactions", level: 1 })
+        .waitFor();
+      await page.waitForFunction(
+        () => document.title === "Import transactions | Family Finance",
+      );
+      const preview = page.getByRole("button", {
+        name: "Preview and save",
+        exact: true,
+      });
+      const sms = page.getByLabel("Bank SMS", { exact: true });
+      await sms.fill("fixture-provider-failure browser");
+      await preview.click();
+      await page
+        .getByRole("alert")
+        .filter({ hasText: /recognition|try again/i })
+        .waitFor();
+      await page
+        .getByRole("link", { name: "Enter manually", exact: true })
+        .waitFor();
+      const retried = page.waitForResponse((response) =>
+        response.url().endsWith(`${path}/imports/preview`),
+      );
+      await page.getByRole("button", { name: "Retry", exact: true }).click();
+      assert.equal((await retried).status(), 502);
+      await sms.fill("fixture-import-bank browser SMS");
+      await preview.click();
+      await page
+        .getByRole("heading", { name: "Review draft", exact: true })
+        .waitFor();
+      const review = page.locator("section.review");
+      await review
+        .locator('select[formcontrolname="accountId"]')
+        .selectOption(account.id);
+      await review
+        .locator('select[formcontrolname="categoryId"]')
+        .selectOption(category.id);
+      const keepSeparate = review.locator(
+        'input[formcontrolname="keepSeparate"]',
+      );
+      if (await keepSeparate.isVisible()) await keepSeparate.check();
+      await axe(page, "390px import review");
+      assert.ok(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
+      const confirmed = page.waitForResponse(
+        (response) =>
+          response.url().includes(`${path}/imports/`) &&
+          response.url().endsWith("/confirm"),
+      );
+      await page
+        .getByRole("button", { name: "Confirm transaction", exact: true })
+        .click();
+      assert.equal((await confirmed).status(), 200);
+      const { transactionId } = await (await confirmed).json();
+      assert.ok(transactionId);
+      const afterPost = await api(
+        `${path}/accounts/${account.id}`,
+        "GET",
+        undefined,
+        200,
+      );
+      assert.equal(afterPost.balanceMinor, "37500");
+
+      await page.goto(`${base}/transactions/import`);
+      await page.locator("#household-selector").selectOption(householdId);
+      await page
+        .locator('select[formcontrolname="sourceType"]')
+        .selectOption("receipt");
+      assert.equal(
+        await page
+          .locator('input[type="file"][capture]')
+          .getAttribute("capture"),
+        "environment",
+      );
+      await page.locator('input[type="file"]:not([capture])').setInputFiles({
+        name: "receipt.webp",
+        mimeType: "image/webp",
+        buffer: Buffer.from(
+          "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoCAAIAAUAmJaQAA3AA/vz0AAA=",
+          "base64",
+        ),
+      });
+      await preview.click();
+      await page
+        .getByRole("heading", { name: "Review draft", exact: true })
+        .waitFor();
+      await review
+        .locator('select[formcontrolname="existingExpenseId"]')
+        .selectOption(transactionId);
+      const attached = page.waitForResponse(
+        (response) =>
+          response.url().includes(`${path}/imports/`) &&
+          response.url().endsWith("/confirm"),
+      );
+      await page
+        .getByRole("button", { name: "Attach receipt", exact: true })
+        .click();
+      assert.equal((await attached).status(), 200);
+      assert.equal(
+        (await (await attached).json()).transactionId,
+        transactionId,
+      );
+      const afterAttach = await api(
+        `${path}/accounts/${account.id}`,
+        "GET",
+        undefined,
+        200,
+      );
+      assert.equal(afterAttach.balanceMinor, afterPost.balanceMinor);
+      await page.locator("#app-language").selectOption("ru");
+      await page
+        .getByRole("heading", { name: "Импорт операций", level: 1 })
+        .waitFor();
+      await page.locator("#app-language").selectOption("sr");
+      await page
+        .getByRole("heading", { name: "Uvoz transakcija", level: 1 })
+        .waitFor();
     },
   );
   assert.deepEqual(pageErrors, [], "browser page errors");

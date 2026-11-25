@@ -5,6 +5,8 @@ export interface AccountInput {
   currency: Currency;
   ownerMemberId: string | null;
   designation: 'personal' | 'business';
+  bankName?: string | null;
+  cardLastFour?: string | null;
 }
 export interface Account extends AccountInput {
   id: string;

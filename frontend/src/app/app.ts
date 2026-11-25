@@ -53,11 +53,13 @@ export class App {
         document.querySelector<HTMLDetailsElement>('.profile-menu')?.removeAttribute('open');
         const path = event.urlAfterRedirects.split(/[?#]/)[0];
         this.currentTitle.set(
-          path === '/settings'
-            ? 'Household settings'
-            : path === '/categories'
-              ? 'Categories'
-              : (this.navigation.find((item) => item.path === path)?.label ?? 'Dashboard'),
+          path === '/transactions/import'
+            ? 'Import transactions'
+            : path === '/settings'
+              ? 'Household settings'
+              : path === '/categories'
+                ? 'Categories'
+                : (this.navigation.find((item) => item.path === path)?.label ?? 'Dashboard'),
         );
         setTimeout(() => document.querySelector<HTMLElement>('.content h1')?.focus());
       }

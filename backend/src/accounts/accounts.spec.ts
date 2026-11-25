@@ -45,6 +45,41 @@ describe('account input contracts', () => {
       '2024-02-29',
     );
   });
+  it('validates paired bank metadata and leaves omitted metadata unchanged', () => {
+    const { service, repository } = setup();
+    void service.create(identity, 'house', {
+      ...creation,
+      bankName: '  Example Bank  ',
+      cardLastFour: '1234',
+    });
+    expect(repository.create).toHaveBeenLastCalledWith(
+      identity,
+      'house',
+      { ...metadata, bankName: 'Example Bank', cardLastFour: '1234' },
+      '0',
+      '2024-02-29',
+    );
+    void service.update(identity, 'house', 'account', {
+      ...metadata,
+      version: 1,
+    });
+    expect(repository.update).toHaveBeenLastCalledWith(
+      identity,
+      'house',
+      'account',
+      metadata,
+      1,
+    );
+    for (const change of [
+      { bankName: 'Bank' },
+      { cardLastFour: '1234' },
+      { bankName: 'Bank', cardLastFour: '12345' },
+      { bankName: null, cardLastFour: '1234' },
+    ])
+      expect(() =>
+        service.create(identity, 'house', { ...creation, ...change }),
+      ).toThrow();
+  });
   it.each([
     { openingBalanceMinor: '-1' },
     { openingBalanceMinor: '01' },

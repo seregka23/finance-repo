@@ -1,6 +1,101 @@
 import type { Message } from './ru-catalog';
 
 export const sr: Record<Message, string> = {
+  'Review required': 'Potrebna je provera',
+  'Transaction declined': 'Transakcija je odbijena',
+  'Settlement pending': 'Poravnanje je na čekanju',
+  'Settlement status unknown': 'Status poravnanja nije poznat',
+  'Some essential details are missing': 'Nedostaju neki obavezni podaci',
+  'Transfer details need review': 'Proverite podatke o prenosu',
+  'Choose the original purchase': 'Izaberite prvobitnu kupovinu',
+
+  'Recognition is not configured. Enter the transaction manually.':
+    'Prepoznavanje nije podešeno. Unesite transakciju ručno.',
+  'The source could not be read. Try clearer text or another image.':
+    'Izvor nije mogao da se pročita. Probajte jasniji tekst ili drugu sliku.',
+  'Recognition is unavailable. Try again or enter the transaction manually.':
+    'Prepoznavanje nije dostupno. Pokušajte ponovo ili unesite transakciju ručno.',
+  'Recognition could not interpret this source. Try another image or enter manually.':
+    'Izvor nije prepoznat. Probajte drugu sliku ili unesite transakciju ručno.',
+  'This draft cannot be confirmed as submitted. Reload it and review the details.':
+    'Radna verzija ne može da se potvrdi. Ponovo je učitajte i proverite podatke.',
+  'This draft was not found. Return to the saved drafts list.':
+    'Radna verzija nije pronađena. Vratite se na listu sačuvanih verzija.',
+
+  'Choose the recognized transaction type.': 'Izaberite prepoznatu vrstu transakcije.',
+  'Choose a transaction type.': 'Izaberite vrstu transakcije.',
+  'Choose type': 'Izaberite vrstu',
+
+  'Import transaction': 'Uvezi transakciju',
+  'Import transactions': 'Uvoz transakcija',
+  'Review recognized details before posting.': 'Proverite prepoznate podatke pre knjiženja.',
+  'Add a source': 'Dodaj izvor',
+  'Text and images are processed for recognition and are not saved as raw files.':
+    'Tekst i slike se obrađuju radi prepoznavanja i ne čuvaju kao izvorne datoteke.',
+  'Import source': 'Izvor uvoza',
+  'Bank SMS': 'SMS banke',
+  Screenshot: 'Snimak ekrana',
+  Receipt: 'Račun',
+  'JPEG, PNG or WebP, up to 1 MiB.': 'JPEG, PNG ili WebP, do 1 MiB.',
+  'Choose image': 'Izaberite sliku',
+  'Take photo': 'Slikajte',
+  'Processing…': 'Obrada…',
+  'Preview and save': 'Prepoznaj i sačuvaj',
+  'Saved drafts': 'Sačuvane radne verzije',
+  'The latest 50 imports are shown.': 'Prikazano je poslednjih 50 uvoza.',
+  'No saved drafts.': 'Nema sačuvanih radnih verzija.',
+  Review: 'Pregledaj',
+  'Review draft': 'Pregled radne verzije',
+  'This import has already been confirmed.': 'Ovaj uvoz je već potvrđen.',
+  'View transactions': 'Prikaži transakcije',
+  'Settlement status': 'Status poravnanja',
+  'Declined transactions cannot be confirmed.': 'Odbijene transakcije se ne mogu potvrditi.',
+  'Review these recognized details carefully.': 'Pažljivo proverite prepoznate podatke.',
+  'Original purchase': 'Prvobitna kupovina',
+  'Actual debit': 'Stvarno zaduženje',
+  'Recognized fee': 'Prepoznata naknada',
+  'Possible duplicates': 'Mogući duplikati',
+  'Add account and return to draft': 'Dodaj račun i vrati se na radnu verziju',
+  'Receipt items': 'Stavke računa',
+  Item: 'Stavka',
+  Quantity: 'Količina',
+  'Unit price': 'Cena po jedinici',
+  'Line total': 'Ukupno za stavku',
+  'Remove item': 'Ukloni stavku',
+  'Add item': 'Dodaj stavku',
+  'I confirm this transaction has settled.': 'Potvrđujem da je transakcija proknjižena.',
+  'I reviewed the possible duplicates and want to keep this separate.':
+    'Proverio sam moguće duplikate i želim da ovo ostane odvojeno.',
+  'Confirm transaction': 'Potvrdi transakciju',
+  'Attach to an existing expense': 'Priloži postojećem trošku',
+  'This adds receipt items without creating another debit.':
+    'Stavke računa se dodaju bez novog zaduženja.',
+  'Existing expense': 'Postojeći trošak',
+  'Choose expense': 'Izaberite trošak',
+  'Attach receipt': 'Priloži račun',
+  'Enter a bank message.': 'Unesite poruku banke.',
+  'Choose a JPEG, PNG or WebP image no larger than 1 MiB.':
+    'Izaberite JPEG, PNG ili WebP sliku do 1 MiB.',
+  'Check receipt items and amounts.': 'Proverite stavke računa i iznose.',
+  'Review possible duplicates and confirm you want to keep this separate.':
+    'Proverite moguće duplikate i potvrdite odvojeno čuvanje.',
+  'Choose an existing expense.': 'Izaberite postojeći trošak.',
+  'Confirm settlement before posting.': 'Potvrdite poravnanje pre knjiženja.',
+  'Check the account and amount.': 'Proverite račun i iznos.',
+  'Import confirmed.': 'Uvoz je potvrđen.',
+  'Bank name (optional)': 'Naziv banke (opciono)',
+  'Last four card digits (optional)': 'Poslednje četiri cifre kartice (opciono)',
+  'Enter both fields to help match bank messages. Never enter the full card number.':
+    'Unesite oba polja za povezivanje poruka banke. Ne unosite ceo broj kartice.',
+  'Enter a bank name and exactly four card digits, or leave both blank.':
+    'Unesite naziv banke i tačno četiri cifre kartice ili ostavite oba polja prazna.',
+  sms: 'SMS',
+  screenshot: 'snimak ekrana',
+  receipt: 'račun',
+  unknown: 'nepoznato',
+  declined: 'odbijeno',
+  confirmed: 'potvrđeno',
+
   Dashboard: 'Pregled',
   Accounts: 'Računi',
   Transactions: 'Transakcije',
@@ -469,5 +564,6 @@ export const sr: Record<Message, string> = {
   'Exporting…': 'Izvoz…',
   'Export is too large. Narrow the filters and try again.':
     'Izvoz je prevelik. Suzite filtere i pokušajte ponovo.',
-  'The export response was not a CSV file. Please try again.': 'Odgovor izvoza nije CSV datoteka. Pokušajte ponovo.',
+  'The export response was not a CSV file. Please try again.':
+    'Odgovor izvoza nije CSV datoteka. Pokušajte ponovo.',
 };
