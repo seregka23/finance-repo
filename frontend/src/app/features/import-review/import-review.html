@@ -361,7 +361,7 @@
                 >{{ i18n.t('Existing expense')
                 }}<select class="field" formControlName="existingExpenseId">
                   <option value="">{{ i18n.t('Choose expense') }}</option>
-                  @for (p of expenses(); track p.id) {
+                  @for (p of attachmentOptions(); track p.id) {
                     <option [value]="p.id">
                       {{ p.transactionDate }} · {{ p.merchant || p.id }} ·
                       {{ money(p.amountMinor || null, p.currency || null) }}

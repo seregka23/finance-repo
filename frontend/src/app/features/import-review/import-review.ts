@@ -93,6 +93,11 @@ export class ImportReview {
   protected readonly current = signal<Draft | null>(null);
   protected readonly expenses = signal<Expense[]>([]);
   protected readonly expenseCursor = signal<string | null>(null);
+  protected readonly attachmentOptions = computed(() => {
+    const matches = this.current()?.possibleDuplicates ?? [];
+    const matchIds = new Set(matches.map((match) => match.id));
+    return [...matches, ...this.expenses().filter((expense) => !matchIds.has(expense.id))];
+  });
   protected readonly busy = signal(false);
   protected readonly loading = signal(false);
   protected readonly error = signal('');

@@ -1047,16 +1047,19 @@ async function verify() {
         mimeType: "image/webp",
         base64: "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoCAAIAAUAmJaQAA3AA/vz0AAA=",
       };
+      const screenshot = await preview({ ...image, sourceType: "screenshot" });
+      assert.equal(screenshot.sourceType, "screenshot");
       const receipt = await preview(image);
+      assert.equal(receipt.id, screenshot.id);
+      assert.equal(receipt.sourceType, "receipt");
       assert.ok(
         receipt.possibleDuplicates.some(
           (candidate) => candidate.id === a.transactionId,
         ),
       );
-      assert.equal(
-        (await preview({ ...image, sourceType: "screenshot" })).id,
-        receipt.id,
-      );
+      const repeatImage = await preview({ ...image, sourceType: "screenshot" });
+      assert.equal(repeatImage.id, receipt.id);
+      assert.equal(repeatImage.sourceType, "receipt");
       const attach = {
         mode: "attach",
         transactionId: a.transactionId,

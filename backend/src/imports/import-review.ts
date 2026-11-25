@@ -248,6 +248,30 @@ export class ImportReviewService {
     if (!row) throw notFound();
     return this.present(i, h, row);
   }
+  private async presentPreview(
+    identity: Identity,
+    householdId: string,
+    row: Row,
+    sourceLabel: Stored['sourceLabel'],
+  ) {
+    if (
+      sourceLabel === 'receipt' &&
+      row.sourceType === 'image' &&
+      row.status === 'pending' &&
+      this.parsed(row).sourceLabel === 'screenshot'
+    ) {
+      await this.access.batch(identity, householdId, 'member', [
+        this.stmt(
+          `UPDATE import_drafts SET extracted_fields_json=json_set(extracted_fields_json,'$.sourceLabel','receipt'),updated_at=? WHERE household_id=? AND id=? AND status='pending' AND json_extract(extracted_fields_json,'$.sourceLabel')='screenshot'`,
+          new Date().toISOString(),
+          householdId,
+          row.id,
+        ),
+      ]);
+      return this.get(identity, householdId, row.id);
+    }
+    return this.present(identity, householdId, row);
+  }
   async preview(i: Identity, h: string, raw: unknown) {
     const source = fields(raw, ['sourceType', 'text', 'mimeType', 'base64']);
     const label = source.sourceType;
@@ -268,7 +292,7 @@ export class ImportReviewService {
     const hash = await digest(bytes);
     const type = normalized.sourceType;
     const found = (await this.rows(i, h, undefined, type, hash))[0];
-    if (found) return this.present(i, h, found);
+    if (found) return this.presentPreview(i, h, found, label);
     const extracted = await this.extraction.extract(i, h, normalized);
     const stored: Stored = {
       sourceLabel: label,
@@ -298,7 +322,7 @@ export class ImportReviewService {
     ]);
     const row = (await this.rows(i, h, undefined, type, hash))[0];
     if (!row) throw unavailable();
-    return this.present(i, h, row);
+    return this.presentPreview(i, h, row, label);
   }
   private hook(
     h: string,

@@ -716,7 +716,6 @@ async function run() {
         { "Idempotency-Key": "browser-refund-purchase" },
       );
       await page.goto(`${base}/transactions`);
-      await page.locator("#household-selector").selectOption(householdId);
       await page
         .getByLabel("Household", { exact: true })
         .selectOption(selected);
@@ -1227,6 +1226,7 @@ async function run() {
         201,
       );
       await page.goto(`${base}/transactions`);
+      await page.locator("#household-selector").selectOption(householdId);
       await page
         .getByRole("link", { name: "Import transaction", exact: true })
         .click();
@@ -1315,7 +1315,15 @@ async function run() {
           "base64",
         ),
       });
+      const receiptPreview = page.waitForResponse((response) =>
+        response.url().endsWith(`${path}/imports/preview`),
+      );
       await preview.click();
+      assert.equal((await receiptPreview).status(), 200);
+      const receipt = await (await receiptPreview).json();
+      assert.ok(
+        receipt.possibleDuplicates.some((match) => match.id === transactionId),
+      );
       await page
         .getByRole("heading", { name: "Review draft", exact: true })
         .waitFor();
