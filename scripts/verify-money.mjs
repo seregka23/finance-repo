@@ -144,7 +144,7 @@ export default {async fetch(request){
     for(let i=0;i<b.records.length;i+=50){const statements=b.records.slice(i,i+50).map(r=>db.prepare("INSERT INTO account_movements(id,household_id,account_id,type,movement_date,amount_minor,currency,rsd_equivalent_minor,exchange_rate,exchange_rate_source,created_at) VALUES (?,?,?,'opening_balance',?,?,?,?,?,?,?)").bind(r.id,b.householdId,b.householdId+'-'+money.validateCurrency(r.currency),calendar.validateDate(r.movementDate),money.toD1Minor(money.parseMinor(r.amountMinor)),r.currency,r.rsdEquivalentMinor===null?null:money.toD1Minor(money.parseMinor(r.rsdEquivalentMinor)),r.exchangeRate,r.exchangeRateSource,'2026-04-15T12:00:00.000Z'));await access.batch(identity,b.householdId,'member',statements);}
     result={ok:true};break;
    }
-   case 'read': result=await new MonetaryRepository(db,access).readRecordedMonth(identity,b.householdId,b.month);break;
+   case 'read': result=await new MonetaryRepository(prisma).readRecordedMonth(identity,b.householdId,b.month);break;
    case 'current-month': {const household=await access.get(identity,b.householdId);result={month:calendar.householdMonthForInstant(b.instant,household.timeZone)};break;}
    case 'sql-sum': {const range=calendar.monthDateRange(b.month);await access.get(identity,b.householdId);result=await db.prepare('SELECT CAST(SUM(amount_minor) AS TEXT) AS totalMinor FROM account_movements WHERE household_id=? AND movement_date>=? AND movement_date<=?').bind(b.householdId,range.startDate,range.endDate).first();break;}
    case 'revoke': await db.prepare("UPDATE household_members SET status='revoked' WHERE id='member-a'").run();result={ok:true};break;

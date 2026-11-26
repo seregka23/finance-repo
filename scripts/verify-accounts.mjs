@@ -195,7 +195,7 @@ export default {async fetch(request, bindings, context) {
       const wrapped={prepare:sql=>env.DB.prepare(sql),batch:statements=>env.DB.batch([
         env.DB.prepare("UPDATE household_members SET status='revoked' WHERE household_id=? AND identity_subject=?").bind(householdId,identity.subject),...statements
       ])};
-      const result=await new AccountsService(new AccountsRepository(wrapped)).create(identity,householdId,body);
+      const result=await new AccountsService(new AccountsRepository(wrapped,prisma)).create(identity,householdId,body);
       return Response.json(result,{status:201});
     } catch(e) {return Response.json(e.getResponse?.()||{error:{code:'FIXTURE_ERROR'}},{status:e.getStatus?.()||500});}
   }

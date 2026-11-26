@@ -17,6 +17,8 @@ import {
 import { apiError, unavailable } from '../auth/auth.errors.js';
 import type { Identity } from '../auth/auth.types.js';
 import { DATABASE } from '../database/database.tokens.js';
+import { PrismaService } from '../database/prisma.service.js';
+import { Prisma } from '../generated/prisma/client.js';
 import type { Database } from '../database/database.types.js';
 import {
   householdMonthForInstant,
@@ -132,6 +134,7 @@ export class PlansService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly access: HouseholdAccessService,
+    private readonly prisma: PrismaService,
   ) {}
   private stmt(sql: string, ...args: (string | number | null)[]) {
     return this.db.prepare(sql).bind(...args);
@@ -225,14 +228,21 @@ export class PlansService {
       if (operation === 'delete' && s.includes('FOREIGN KEY constraint failed'))
         throw apiError(409, 'PLAN_LINKED', 'Plan has linked records');
       if (id && s.includes('posting_result_invalid')) {
-        const [, r] = await this.access.batch(i, h, 'member', [
-          this.stmt(
-            'SELECT id FROM monthly_plans WHERE household_id=? AND id=?',
-            h,
-            id,
-          ),
-        ]);
-        if (!r.results.length) throw notFound();
+        let rows: { planId: string | null }[];
+        try {
+          rows = await this.prisma.$queryRaw<
+            { planId: string | null }[]
+          >(Prisma.sql`
+          SELECT p.id AS planId FROM households h JOIN household_members m ON m.household_id=h.id
+          AND m.identity_subject=${i.subject} AND m.status='active'
+          LEFT JOIN monthly_plans p ON p.household_id=h.id AND p.id=${id}
+          WHERE h.id=${h} AND h.status='active'`);
+        } catch {
+          throw unavailable();
+        }
+        if (!rows.length)
+          throw apiError(404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
+        if (!rows[0].planId) throw notFound();
       }
       throw unavailable();
     }
@@ -244,10 +254,26 @@ export class PlansService {
       q.month === undefined
         ? householdMonthForInstant(new Date().toISOString(), household.timeZone)
         : month(q.month);
-    const r = await this.batch(i, h, [this.query(h, m)], 'read');
+    const { startDate, endDate } = monthDateRange(m);
+    let rows: (PlanRow | { id: null })[];
+    try {
+      rows = await this.prisma.$queryRaw(Prisma.sql`
+        SELECT p.id,p.month,p.category_id AS categoryId,c.name AS categoryName,c.status AS categoryStatus,CAST(p.limit_minor AS TEXT) AS limitMinor,v.movement_id AS movementId,v.currency,CAST(v.amount_minor AS TEXT) AS amountMinor,CAST(v.rsd_equivalent_minor AS TEXT) AS rsdEquivalentMinor,mov.exchange_rate AS exchangeRate
+        FROM households h JOIN household_members member ON member.household_id=h.id AND member.identity_subject=${i.subject} AND member.status='active'
+        LEFT JOIN (monthly_plans p JOIN categories c ON c.household_id=p.household_id AND c.id=p.category_id) ON p.household_id=h.id AND p.month=${m}
+        LEFT JOIN transaction_reporting_movements v ON v.household_id=p.household_id AND v.category_id=p.category_id AND v.type IN ('expense','fee','refund') AND v.transaction_date>=${startDate} AND v.transaction_date<=${endDate}
+        LEFT JOIN account_movements mov ON mov.household_id=v.household_id AND mov.id=v.movement_id
+        WHERE h.id=${h} AND h.status='active' ORDER BY c.name,p.id,v.transaction_id,v.movement_id`);
+    } catch {
+      throw unavailable();
+    }
+    if (!rows.length)
+      throw apiError(404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
     return {
       month: m,
-      plans: summarizePlans(r[1].results as unknown as PlanRow[]),
+      plans: summarizePlans(
+        rows.filter((row): row is PlanRow => row.id !== null),
+      ),
     };
   }
   async create(i: Identity, h: string, value: unknown) {
