@@ -148,7 +148,7 @@ export class ReservesService {
         balanceMinor: string;
       }[]
     >(
-      Prisma.sql`SELECT r.id,r.account_id AS accountId,r.name,r.status,a.currency,CAST(COALESCE((SELECT SUM(m.amount_minor) FROM reserve_movements m WHERE m.household_id=r.household_id AND m.reserve_id=r.id),0) AS TEXT) AS balanceMinor FROM reserves r JOIN accounts a ON a.household_id=r.household_id AND a.id=r.account_id JOIN households h ON h.id=r.household_id WHERE r.household_id=${h} AND (${id ?? null} IS NULL OR r.id=${id ?? null}) AND h.status='active' AND EXISTS(SELECT 1 FROM household_members member WHERE member.household_id=h.id AND membeidentity_subject=${i.subject} AND member.status='active') ORDER BY r.name,r.id`,
+      Prisma.sql`SELECT r.id,r.account_id AS accountId,r.name,r.status,a.currency,CAST(COALESCE((SELECT SUM(m.amount_minor) FROM reserve_movements m WHERE m.household_id=r.household_id AND m.reserve_id=r.id),0) AS TEXT) AS balanceMinor FROM reserves r JOIN accounts a ON a.household_id=r.household_id AND a.id=r.account_id JOIN households h ON h.id=r.household_id WHERE r.household_id=${h} AND (${id ?? null} IS NULL OR r.id=${id ?? null}) AND h.status='active' AND EXISTS(SELECT 1 FROM household_members member WHERE member.household_id=h.id AND member.identity_subject=${i.subject} AND member.status='active') ORDER BY r.name,r.id`,
     );
     return result;
   }
