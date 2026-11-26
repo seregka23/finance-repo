@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Delete,
   Get,
@@ -7,9 +6,15 @@ import {
   Param,
   Patch,
   Post,
-  Req,
 } from '@nestjs/common';
-import type { AuthRequest } from '../auth/auth.types.js';
+import type { Identity } from '../auth/auth.types.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
+import { BodyDto } from '../validation/request-dto.js';
+import {
+  HouseholdDto,
+  InviteDto,
+  AcceptInvitationDto,
+} from './households.dto.js';
 import { HouseholdAccessService } from './household-access.service.js';
 import { HouseholdsService } from './households.service.js';
 
@@ -19,58 +24,61 @@ export class HouseholdsController {
     private readonly service: HouseholdsService,
     private readonly access: HouseholdAccessService,
   ) {}
-  @Get('session') session(@Req() req: AuthRequest) {
-    return this.service.session(req.identity);
+  @Get('session') session(@CurrentIdentity() identity: Identity) {
+    return this.service.session(identity);
   }
-  @Post('households') create(@Req() req: AuthRequest, @Body() body: unknown) {
-    return this.service.create(req.identity, body);
+  @Post('households') create(
+    @CurrentIdentity() identity: Identity,
+    @BodyDto(HouseholdDto) body: HouseholdDto,
+  ) {
+    return this.service.create(identity, body);
   }
   @Get('households/:householdId') get(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') id: string,
   ) {
-    return this.access.get(req.identity, id);
+    return this.access.get(identity, id);
   }
   @Patch('households/:householdId') update(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') id: string,
-    @Body() body: unknown,
+    @BodyDto(HouseholdDto) body: HouseholdDto,
   ) {
-    return this.service.update(req.identity, id, body);
+    return this.service.update(identity, id, body);
   }
   @Get('households/:householdId/members') members(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') id: string,
   ) {
-    return this.service.members(req.identity, id);
+    return this.service.members(identity, id);
   }
   @Post('households/:householdId/invitations') invite(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') id: string,
-    @Body() body: unknown,
+    @BodyDto(InviteDto) body: InviteDto,
   ) {
-    return this.service.invite(req.identity, id, body);
+    return this.service.invite(identity, id, body);
   }
   @Post('invitations/accept') accept(
-    @Req() req: AuthRequest,
-    @Body() body: unknown,
+    @CurrentIdentity() identity: Identity,
+    @BodyDto(AcceptInvitationDto) body: AcceptInvitationDto,
   ) {
-    return this.service.accept(req.identity, body);
+    return this.service.accept(identity, body);
   }
   @Delete('households/:householdId/invitations/:invitationId')
   @HttpCode(204)
   cancel(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') id: string,
     @Param('invitationId') invitationId: string,
   ) {
-    return this.service.cancel(req.identity, id, invitationId);
+    return this.service.cancel(identity, id, invitationId);
   }
   @Delete('households/:householdId/members/:memberId') @HttpCode(204) revoke(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') id: string,
     @Param('memberId') memberId: string,
   ) {
-    return this.service.revoke(req.identity, id, memberId);
+    return this.service.revoke(identity, id, memberId);
   }
 }

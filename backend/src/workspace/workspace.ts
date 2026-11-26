@@ -1,12 +1,6 @@
-import {
-  Controller,
-  Get,
-  Inject,
-  Injectable,
-  Param,
-  Req,
-} from '@nestjs/common';
-import type { AuthRequest, Identity } from '../auth/auth.js';
+import { Controller, Get, Inject, Injectable, Param } from '@nestjs/common';
+import type { Identity } from '../auth/auth.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import { DATABASE } from '../health.controller.js';
 import {
   HouseholdAccessService,
@@ -71,7 +65,10 @@ export class WorkspaceController {
   constructor(private readonly service: WorkspaceService) {}
 
   @Get()
-  get(@Req() req: AuthRequest, @Param('householdId') householdId: string) {
-    return this.service.get(req.identity, householdId);
+  get(
+    @CurrentIdentity() identity: Identity,
+    @Param('householdId') householdId: string,
+  ) {
+    return this.service.get(identity, householdId);
   }
 }

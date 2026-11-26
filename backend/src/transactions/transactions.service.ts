@@ -1,3 +1,18 @@
+import { validateRequest } from '../validation/request-dto.js';
+import {
+  PostingDto,
+  TransferDto,
+  RefundDto,
+  EditPostingDto,
+  EditTransferDto,
+  EditRefundDto,
+  ReserveFundingDto,
+  TransferFeeDto,
+  TransactionVersionDto,
+  TransactionExportQueryDto,
+  TransactionListQueryDto,
+  TransactionCursorDto,
+} from './transactions.dto.js';
 import { Injectable } from '@nestjs/common';
 import { apiError } from '../auth/auth.js';
 import type { Identity } from '../auth/auth.js';
@@ -28,16 +43,6 @@ const inputKeys = [
   'note',
   'reserveFunding',
 ];
-function fields(value: unknown, allowed: string[]): Record<string, unknown> {
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    Object.keys(value).some((key) => !allowed.includes(key))
-  )
-    throw invalid();
-  return value as Record<string, unknown>;
-}
 function requiredText(value: unknown, max: number): string {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max)
     throw invalid();
@@ -95,7 +100,7 @@ function posting(
       if (body.type !== 'expense') throw invalid();
       if (body.reserveFunding == null) reserveFunding = undefined;
       else {
-        const f = fields(body.reserveFunding, ['reserveId', 'amountMinor']);
+        const f = validateRequest(ReserveFundingDto, body.reserveFunding);
         const fundingAmount = parseMinor(f.amountMinor);
         if (fundingAmount <= 0n || fundingAmount > amount) throw invalid();
         reserveFunding = {
@@ -138,7 +143,7 @@ export function transfer(
   body: Record<string, unknown>,
   replacement = false,
 ): TransferInput {
-  fields(body, [...transferKeys, ...(replacement ? ['version'] : [])]);
+  validateRequest(replacement ? EditTransferDto : TransferDto, body);
   const required = replacement
     ? transferKeys
     : transferKeys.filter((k) => !['fee', 'merchant', 'note'].includes(k));
@@ -160,12 +165,7 @@ export function transfer(
       throw invalid();
     let fee: TransferInput['fee'] = null;
     if (body.fee != null) {
-      const f = fields(body.fee, [
-        'amountMinor',
-        'categoryId',
-        'exchangeRate',
-        'exchangeRateSource',
-      ]);
+      const f = validateRequest(TransferFeeDto, body.fee);
       const amount = parseMinor(f.amountMinor);
       if (amount <= 0n) throw invalid();
       let exchangeRate: string | null = null;
@@ -230,7 +230,7 @@ export function refund(
   body: Record<string, unknown>,
   replacement = false,
 ): RefundInput {
-  fields(body, [...refundKeys, ...(replacement ? ['version'] : [])]);
+  validateRequest(replacement ? EditRefundDto : RefundDto, body);
   const required = replacement
     ? refundKeys
     : refundKeys.filter((k) => k !== 'merchant' && k !== 'note');
@@ -260,13 +260,13 @@ function requestKey(value: unknown): string {
 export function normalizePostingBody(
   body: unknown,
 ): PostingInput | TransferInput | RefundInput {
-  const raw = fields(
-    body,
+  const raw = validateRequest<Record<string, unknown>>(
     (body as { type?: unknown })?.type === 'transfer'
-      ? transferKeys
+      ? TransferDto
       : (body as { type?: unknown })?.type === 'refund'
-        ? refundKeys
-        : inputKeys,
+        ? RefundDto
+        : PostingDto,
+    body,
   );
   return raw.type === 'transfer'
     ? transfer(raw)
@@ -302,10 +302,10 @@ export class TransactionsService {
   edit(identity: Identity, householdId: string, id: string, body: unknown) {
     const isTransfer = (body as { type?: unknown })?.type === 'transfer';
     const isRefund = (body as { type?: unknown })?.type === 'refund';
-    const b = fields(body, [
-      ...(isTransfer ? transferKeys : isRefund ? refundKeys : inputKeys),
-      'version',
-    ]);
+    const b = validateRequest<Record<string, unknown>>(
+      isTransfer ? EditTransferDto : isRefund ? EditRefundDto : EditPostingDto,
+      body,
+    );
     return this.repository.edit(
       identity,
       householdId,
@@ -319,7 +319,7 @@ export class TransactionsService {
     );
   }
   void(identity: Identity, householdId: string, id: string, body: unknown) {
-    const b = fields(body, ['version']);
+    const b = validateRequest(TransactionVersionDto, body);
     return this.repository.void(identity, householdId, id, version(b.version));
   }
   get(identity: Identity, householdId: string, id: string) {
@@ -330,17 +330,10 @@ export class TransactionsService {
     householdId: string,
     query: unknown,
   ): Promise<string> {
-    const q = fields(query, [
-      'search',
-      'dateFrom',
-      'dateTo',
-      'type',
-      'status',
-      'categoryId',
-      'accountId',
-      'ownerMemberId',
-      'currency',
-    ]);
+    const q: Record<string, unknown> = validateRequest(
+      TransactionExportQueryDto,
+      query,
+    );
     const chunks = ['\uFEFF' + CSV_HEADER];
     const encoder = new TextEncoder();
     let bytes = encoder.encode(chunks[0]).length;
@@ -382,19 +375,7 @@ export class TransactionsService {
     return chunks.join('');
   }
   list(identity: Identity, householdId: string, query: unknown) {
-    const q = fields(query, [
-      'limit',
-      'cursor',
-      'search',
-      'dateFrom',
-      'dateTo',
-      'type',
-      'status',
-      'categoryId',
-      'accountId',
-      'ownerMemberId',
-      'currency',
-    ]);
+    const q = validateRequest(TransactionListQueryDto, query);
     if (
       q.limit !== undefined &&
       (typeof q.limit !== 'string' || !/^(?:[1-9]|[1-9]\d|100)$/.test(q.limit))
@@ -413,7 +394,7 @@ export class TransactionsService {
         const decoded: unknown = JSON.parse(
           atob(q.cursor.replace(/-/g, '+').replace(/_/g, '/')),
         );
-        const c = fields(decoded, ['transactionDate', 'id']);
+        const c = validateRequest(TransactionCursorDto, decoded);
         cursor = {
           transactionDate: validateDate(c.transactionDate),
           id: requiredText(c.id, 200),

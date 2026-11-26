@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
+import type { CredentialsDto } from './auth.dto.js';
 import { lifetime } from './auth.crypto.js';
 import { cookieToken, origin } from './auth.http.js';
 
@@ -36,14 +37,14 @@ export class AuthController {
     return { user: { email: result.email } };
   }
   @Post('register') register(
-    @Body() body: unknown,
+    @Body() body: CredentialsDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     return this.signIn(body, req, res, true);
   }
   @Post('login') @HttpCode(200) login(
-    @Body() body: unknown,
+    @Body() body: CredentialsDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {

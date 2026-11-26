@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   HttpException,
   Inject,
@@ -7,6 +6,8 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
+import { validateRequest, BodyDto } from '../validation/request-dto.js';
+import { FeedbackDto } from './feedback.dto.js';
 import { apiError } from '../auth/auth.errors.js';
 import { digest } from '../auth/auth.crypto.js';
 import type { AuthRequest, Identity } from '../auth/auth.types.js';
@@ -42,16 +43,7 @@ function hasControl(value: string, multiline: boolean): boolean {
   return false;
 }
 function validate(value: unknown) {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw invalid();
-  const b = value as Record<string, unknown>;
-  if (
-    Object.keys(b).length !== 2 ||
-    Object.keys(b).some((k) => k !== 'title' && k !== 'message') ||
-    typeof b.title !== 'string' ||
-    typeof b.message !== 'string'
-  )
-    throw invalid();
+  const b = validateRequest(FeedbackDto, value);
   const title = b.title.trim(),
     message = b.message.trim();
   if (
@@ -182,7 +174,10 @@ export class FeedbackService {
 @Controller('api/v1/feedback')
 export class FeedbackController {
   constructor(private readonly service: FeedbackService) {}
-  @Post() submit(@Req() req: AuthRequest, @Body() body: unknown) {
+  @Post() submit(
+    @Req() req: AuthRequest,
+    @BodyDto(FeedbackDto) body: FeedbackDto,
+  ) {
     return this.service.submit(
       req.identity,
       req.get('x-internal-client-ip') ?? '',

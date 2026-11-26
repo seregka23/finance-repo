@@ -1,85 +1,85 @@
+import { Controller, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import type { Identity } from '../auth/auth.types.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
+import { BodyDto, QueryDto } from '../validation/request-dto.js';
 import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  Param,
-  Patch,
-  Post,
-  Query,
-  Req,
-} from '@nestjs/common';
-import type { AuthRequest } from '../auth/auth.types.js';
+  AccountListQueryDto,
+  CreateAccountDto,
+  UpdateAccountDto,
+  AccountVersionDto,
+  AccountAdjustmentDto,
+  MovementQueryDto,
+} from './accounts.dto.js';
 import { AccountsService } from './accounts.service.js';
 
 @Controller('api/v1/households/:householdId/accounts')
 export class AccountsController {
   constructor(private readonly service: AccountsService) {}
   @Get() list(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
-    @Query() query: unknown,
+    @QueryDto(AccountListQueryDto) query: AccountListQueryDto,
   ) {
-    return this.service.list(req.identity, h, query);
+    return this.service.list(identity, h, query);
   }
   @Post() create(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
-    @Body() body: unknown,
+    @BodyDto(CreateAccountDto) body: CreateAccountDto,
   ) {
-    return this.service.create(req.identity, h, body);
+    return this.service.create(identity, h, body);
   }
   @Get(':id') get(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
   ) {
-    return this.service.get(req.identity, h, id);
+    return this.service.get(identity, h, id);
   }
   @Patch(':id') update(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
-    @Body() body: unknown,
+    @BodyDto(UpdateAccountDto) body: UpdateAccountDto,
   ) {
-    return this.service.update(req.identity, h, id, body);
+    return this.service.update(identity, h, id, body);
   }
   @Post(':id/archive')
   @HttpCode(200)
   archive(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
-    @Body() body: unknown,
+    @BodyDto(AccountVersionDto) body: AccountVersionDto,
   ) {
-    return this.service.setStatus(req.identity, h, id, 'archived', body);
+    return this.service.setStatus(identity, h, id, 'archived', body);
   }
   @Post(':id/restore')
   @HttpCode(200)
   restore(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
-    @Body() body: unknown,
+    @BodyDto(AccountVersionDto) body: AccountVersionDto,
   ) {
-    return this.service.setStatus(req.identity, h, id, 'active', body);
+    return this.service.setStatus(identity, h, id, 'active', body);
   }
   @Post(':id/adjustments')
   adjust(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
-    @Body() body: unknown,
+    @BodyDto(AccountAdjustmentDto) body: AccountAdjustmentDto,
   ) {
-    return this.service.adjust(req.identity, h, id, body);
+    return this.service.adjust(identity, h, id, body);
   }
   @Get(':id/movements')
   movements(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
-    @Query() query: unknown,
+    @QueryDto(MovementQueryDto) query: MovementQueryDto,
   ) {
-    return this.service.movements(req.identity, h, id, query);
+    return this.service.movements(identity, h, id, query);
   }
 }

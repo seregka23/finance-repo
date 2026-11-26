@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Get,
   Inject,
@@ -7,11 +6,21 @@ import {
   Param,
   Patch,
   Post,
-  Query,
-  Req,
 } from '@nestjs/common';
+import {
+  validateRequest,
+  QueryDto,
+  BodyDto,
+} from '../validation/request-dto.js';
+import {
+  CategoryListQueryDto,
+  CategoryOptionsQueryDto,
+  CreateCategoryDto,
+  UpdateCategoryDto,
+} from './categories.dto.js';
 import { apiError } from '../auth/auth.js';
-import type { AuthRequest, Identity } from '../auth/auth.js';
+import type { Identity } from '../auth/auth.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import { DATABASE } from '../health.controller.js';
 import {
   HouseholdAccessService,
@@ -35,16 +44,6 @@ const columns =
 const invalid = () => apiError(400, 'INVALID_INPUT', 'Invalid input');
 const notFound = () =>
   apiError(404, 'CATEGORY_NOT_FOUND', 'Category not found');
-function fields(value: unknown, allowed: string[]): Record<string, unknown> {
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    Object.keys(value).some((k) => !allowed.includes(k))
-  )
-    throw invalid();
-  return value as Record<string, unknown>;
-}
 function categoryName(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -86,10 +85,8 @@ export class CategoryService {
       .bind(householdId, categoryId, usage);
   }
   async list(identity: Identity, householdId: string, query: unknown) {
-    const q = fields(query, ['status']);
+    const q = validateRequest(CategoryListQueryDto, query);
     const status = q.status === undefined ? 'all' : q.status;
-    if (status !== 'all' && status !== 'active' && status !== 'archived')
-      throw invalid();
     const [, result] = await this.access.batch(
       identity,
       householdId,
@@ -127,7 +124,7 @@ export class CategoryService {
     return result.results as unknown as Category[];
   }
   async options(identity: Identity, householdId: string, query: unknown) {
-    const q = fields(query, ['usage']);
+    const q = validateRequest(CategoryOptionsQueryDto, query);
     const usage = usageValue(q.usage);
     return {
       usage,
@@ -167,7 +164,7 @@ export class CategoryService {
     householdId: string,
     body: unknown,
   ): Promise<Category> {
-    const b = fields(body, ['name', 'type']);
+    const b = validateRequest(CreateCategoryDto, body);
     const name = categoryName(b.name);
     if (b.type !== 'expense' && b.type !== 'income') throw invalid();
     const category: Category = {
@@ -202,7 +199,7 @@ export class CategoryService {
     id: string,
     body: unknown,
   ): Promise<Category> {
-    const b = fields(body, ['name', 'status']);
+    const b = validateRequest(UpdateCategoryDto, body);
     if (!Object.keys(b).length) throw invalid();
     const name =
       b.name === undefined && !('name' in b) ? null : categoryName(b.name);
@@ -230,45 +227,45 @@ export class CategoryService {
 export class CategoriesController {
   constructor(private readonly service: CategoryService) {}
   @Get() list(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
-    @Query() q: unknown,
+    @QueryDto(CategoryListQueryDto) q: CategoryListQueryDto,
   ) {
-    return this.service.list(req.identity, h, q);
+    return this.service.list(identity, h, q);
   }
   @Get('options') options(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
-    @Query() q: unknown,
+    @QueryDto(CategoryOptionsQueryDto) q: CategoryOptionsQueryDto,
   ) {
-    return this.service.options(req.identity, h, q);
+    return this.service.options(identity, h, q);
   }
   @Get('reference-names') referenceNames(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
   ) {
-    return this.service.referenceNames(req.identity, h);
+    return this.service.referenceNames(identity, h);
   }
   @Get(':id') get(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
   ) {
-    return this.service.get(req.identity, h, id);
+    return this.service.get(identity, h, id);
   }
   @Post() create(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
-    @Body() body: unknown,
+    @BodyDto(CreateCategoryDto) body: CreateCategoryDto,
   ) {
-    return this.service.create(req.identity, h, body);
+    return this.service.create(identity, h, body);
   }
   @Patch(':id') update(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
-    @Body() body: unknown,
+    @BodyDto(UpdateCategoryDto) body: UpdateCategoryDto,
   ) {
-    return this.service.update(req.identity, h, id, body);
+    return this.service.update(identity, h, id, body);
   }
 }

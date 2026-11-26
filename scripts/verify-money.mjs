@@ -157,8 +157,6 @@ export default {async fetch(request){
   await writeFile(join(temporary, "worker.mjs"), worker);
   const aliases = Object.fromEntries(
     [
-      "class-validator",
-      "class-transformer",
       "@nestjs/microservices",
       "@nestjs/microservices/microservices-module.js",
       "@nestjs/websockets/socket-module.js",

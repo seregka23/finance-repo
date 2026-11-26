@@ -1,4 +1,11 @@
 import {
+  PreviewImportDto,
+  ConfirmImportDto,
+  ReceiptItemDto,
+} from './imports.dto.js';
+import { validateRequest } from '../validation/request-dto.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
+import {
   Body,
   Controller,
   Get,
@@ -7,10 +14,9 @@ import {
   Injectable,
   Param,
   Post,
-  Req,
 } from '@nestjs/common';
 import { apiError, unavailable } from '../auth/auth.errors.js';
-import type { AuthRequest, Identity } from '../auth/auth.types.js';
+import type { Identity } from '../auth/auth.types.js';
 import { DATABASE } from '../database/database.tokens.js';
 import type { Database } from '../database/database.types.js';
 import { PrismaService } from '../database/prisma.service.js';
@@ -31,16 +37,6 @@ const conflict = () =>
     'Import cannot be confirmed or was already confirmed differently',
   );
 const notFound = () => apiError(404, 'IMPORT_NOT_FOUND', 'Import not found');
-function fields(v: unknown, keys: string[]): Record<string, unknown> {
-  if (
-    !v ||
-    typeof v !== 'object' ||
-    Array.isArray(v) ||
-    Object.keys(v).some((k) => !keys.includes(k))
-  )
-    throw invalid();
-  return v as Record<string, unknown>;
-}
 function text(v: unknown, max = 200): string {
   if (typeof v !== 'string' || !v.trim() || v.trim().length > max)
     throw invalid();
@@ -59,7 +55,7 @@ function amount(v: unknown): string | null {
 function items(value: unknown) {
   if (!Array.isArray(value) || value.length > 100) throw invalid();
   return value.map((v: unknown) => {
-    const x = fields(v, ['name', 'quantity', 'unitPriceMinor', 'amountMinor']);
+    const x = validateRequest(ReceiptItemDto, v);
     if (
       !('name' in x) ||
       !('quantity' in x) ||
@@ -273,7 +269,10 @@ export class ImportReviewService {
     return this.present(identity, householdId, row);
   }
   async preview(i: Identity, h: string, raw: unknown) {
-    const source = fields(raw, ['sourceType', 'text', 'mimeType', 'base64']);
+    const source: Record<string, unknown> = validateRequest(
+      PreviewImportDto,
+      raw,
+    );
     const label = source.sourceType;
     if (label !== 'sms' && label !== 'screenshot' && label !== 'receipt')
       throw invalid();
@@ -379,13 +378,7 @@ export class ImportReviewService {
   }
   async confirm(i: Identity, h: string, id: string, body: unknown) {
     id = text(id);
-    const b = fields(body, [
-      'mode',
-      'transaction',
-      'transactionId',
-      'items',
-      'settlementConfirmed',
-    ]);
+    const b = validateRequest(ConfirmImportDto, body);
     if (b.mode !== 'post' && b.mode !== 'attach') throw invalid();
     const lines = items(b.items);
     let normalized: ReturnType<typeof normalizePostingBody> | null = null,
@@ -479,28 +472,31 @@ export class ImportReviewService {
 export class ImportReviewController {
   constructor(private readonly service: ImportReviewService) {}
   @Post('preview') @HttpCode(200) preview(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
-    @Body() b: unknown,
+    @Body() b: PreviewImportDto,
   ) {
-    return this.service.preview(r.identity, h, b);
+    return this.service.preview(identity, h, b);
   }
-  @Get() list(@Req() r: AuthRequest, @Param('householdId') h: string) {
-    return this.service.list(r.identity, h);
+  @Get() list(
+    @CurrentIdentity() identity: Identity,
+    @Param('householdId') h: string,
+  ) {
+    return this.service.list(identity, h);
   }
   @Get(':id') get(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
   ) {
-    return this.service.get(r.identity, h, id);
+    return this.service.get(identity, h, id);
   }
   @Post(':id/confirm') @HttpCode(200) confirm(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
-    @Body() b: unknown,
+    @Body() b: ConfirmImportDto,
   ) {
-    return this.service.confirm(r.identity, h, id, b);
+    return this.service.confirm(identity, h, id, b);
   }
 }

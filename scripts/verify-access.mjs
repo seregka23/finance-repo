@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createServer } from "node:net";
@@ -327,8 +327,6 @@ export default { async fetch(request,bindings,context) {
 `;
   await writeFile(join(temporary, "worker.mjs"), fixture);
   const aliases = {
-    "class-validator": "backend/cloudflare/missing-optional-package.mjs",
-    "class-transformer": "backend/cloudflare/missing-optional-package.mjs",
     "@nestjs/microservices": "backend/cloudflare/missing-optional-package.mjs",
     "@nestjs/microservices/microservices-module.js":
       "backend/cloudflare/missing-optional-package.mjs",
@@ -425,6 +423,16 @@ async function verify() {
           .error.code,
         "INVALID_INPUT",
       );
+      for (const invalid of [
+        [],
+        { ...body, constructor: "extra" },
+        { ...body, message: 123 },
+      ]) {
+        assert.equal(
+          (await post(owner, 400, { body: invalid })).error.code,
+          "INVALID_INPUT",
+        );
+      }
       assert.deepEqual(await post(owner, 201), {
         issueNumber: 42,
         issueUrl: "https://github.com/seregka23/finance-repo/issues/42",
@@ -561,6 +569,21 @@ async function verify() {
   await check(
     "persistent email and network throttles reject excess attempts",
     async () => {
+      const malformedKey = `email:${createHash("sha256").update("").digest("hex")}`;
+      const malformedAttempts = async () =>
+        (
+          await query(
+            `SELECT attempts FROM auth_throttles WHERE key='${malformedKey}'`,
+          )
+        )[0]?.attempts ?? 0;
+      const initial = await malformedAttempts();
+      const malformed = await api("/api/v1/auth/login", null, {
+        method: "POST",
+        body: { email: "reader@example.invalid", password: 123 },
+        status: 400,
+      });
+      assert.equal(malformed.error.code, "INVALID_INPUT");
+      assert.equal(await malformedAttempts(), initial + 1);
       for (let i = 0; i < 11; i++)
         await api("/api/v1/auth/login", null, {
           method: "POST",

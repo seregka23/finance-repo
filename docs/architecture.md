@@ -32,6 +32,21 @@ SQL, migrations, Prisma mappings, transaction posting and atomic D1 batches are
 unchanged. The Prisma adapter's transaction limitation still requires financial
 compound writes to use the D1 binding's batch API.
 
+### Request DTOs
+
+Each feature declares its request bodies and query parameters in request DTOs.
+`backend/src/validation/request-dto.ts` connects the decorators to Nest parameter
+pipes and supports validation inside services when ordering matters. For
+example, malformed credentials still count toward the authentication throttle,
+and household authorization still runs before protected data is processed.
+
+Define allowed fields explicitly. Validation preserves the original JSON values,
+including omitted fields, explicit `null`, and string amounts. Keep cross-field,
+calendar, money and database-dependent checks in their domain services. Use the
+existing API error envelope, and keep mapping responses explicitly so sensitive
+storage fields stay out of the API. The packaged Worker and its local verification
+fixtures load `class-validator` and `class-transformer` as runtime dependencies.
+
 ## Frontend
 
 | File | Responsibility |

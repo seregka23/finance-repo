@@ -223,8 +223,6 @@ export default {async fetch(request, bindings, context) {
 `;
   await writeFile(join(temporary, "worker.mjs"), fixture);
   const aliases = {
-    "class-validator": "backend/cloudflare/missing-optional-package.mjs",
-    "class-transformer": "backend/cloudflare/missing-optional-package.mjs",
     "@nestjs/microservices": "backend/cloudflare/missing-optional-package.mjs",
     "@nestjs/microservices/microservices-module.js":
       "backend/cloudflare/missing-optional-package.mjs",

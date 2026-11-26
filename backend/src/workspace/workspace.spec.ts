@@ -69,10 +69,7 @@ describe('workspace summary', () => {
     const controller = new WorkspaceController({
       get,
     } as unknown as WorkspaceService);
-    await controller.get(
-      { identity } as Parameters<WorkspaceController['get']>[0],
-      'household-1',
-    );
+    await controller.get(identity, 'household-1');
     expect(get).toHaveBeenCalledWith(identity, 'household-1');
   });
 });
