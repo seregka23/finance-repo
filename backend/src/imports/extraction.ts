@@ -1,3 +1,7 @@
+import type { ExtractionInputDto } from './imports.dto.js';
+import { SmsExtractionDto, ImageExtractionDto } from './imports.dto.js';
+import { validateRequest } from '../validation/request-dto.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import OpenAI from 'openai';
 import {
   createOpenAIClient,
@@ -12,10 +16,9 @@ import {
   HttpCode,
   Param,
   Post,
-  Req,
 } from '@nestjs/common';
 import { apiError } from '../auth/auth.errors.js';
-import type { AuthRequest, Identity } from '../auth/auth.types.js';
+import type { Identity } from '../auth/auth.types.js';
 import { validateDate } from '../finance/calendar.js';
 import { parseMinor } from '../finance/money.js';
 import { HouseholdAccessService } from '../households/household-access.service.js';
@@ -96,7 +99,7 @@ export function parseInput(raw: unknown): Input {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw invalid();
   const source = (raw as { sourceType?: unknown }).sourceType;
   if (source === 'sms') {
-    const v = object(raw, ['sourceType', 'text']);
+    const v = validateRequest(SmsExtractionDto, raw, invalid);
     if (
       typeof v.text !== 'string' ||
       !v.text.trim() ||
@@ -107,7 +110,7 @@ export function parseInput(raw: unknown): Input {
     return { sourceType: 'sms', text: v.text };
   }
   if (source === 'image') {
-    const v = object(raw, ['sourceType', 'mimeType', 'base64']);
+    const v = validateRequest(ImageExtractionDto, raw, invalid);
     if (
       typeof v.mimeType !== 'string' ||
       !['image/jpeg', 'image/png', 'image/webp'].includes(v.mimeType) ||
@@ -409,10 +412,10 @@ export class ExtractionService {
 export class ExtractionController {
   constructor(private readonly service: ExtractionService) {}
   @Post('extract') @HttpCode(200) extract(
-    @Req() req: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') householdId: string,
-    @Body() body: unknown,
+    @Body() body: ExtractionInputDto,
   ) {
-    return this.service.extract(req.identity, householdId, body);
+    return this.service.extract(identity, householdId, body);
   }
 }

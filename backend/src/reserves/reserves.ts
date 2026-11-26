@@ -1,4 +1,12 @@
 import {
+  CreateReserveDto,
+  ReserveMovementDto,
+  ReserveMovementQueryDto,
+  ReserveCursorDto,
+} from './reserves.dto.js';
+import { validateRequest } from '../validation/request-dto.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
+import {
   Body,
   Controller,
   Get,
@@ -7,10 +15,9 @@ import {
   Param,
   Post,
   Query,
-  Req,
 } from '@nestjs/common';
 import { apiError, unavailable } from '../auth/auth.errors.js';
-import type { AuthRequest, Identity } from '../auth/auth.types.js';
+import type { Identity } from '../auth/auth.types.js';
 import { DATABASE } from '../database/database.tokens.js';
 import type { Database } from '../database/database.types.js';
 import { PrismaService } from '../database/prisma.service.js';
@@ -19,16 +26,6 @@ import { householdDateForInstant, validateDate } from '../finance/calendar.js';
 import { parseMinor } from '../finance/money.js';
 
 const invalid = () => apiError(400, 'INVALID_INPUT', 'Invalid input');
-function fields(v: unknown, keys: string[]): Record<string, unknown> {
-  if (
-    !v ||
-    typeof v !== 'object' ||
-    Array.isArray(v) ||
-    Object.keys(v).some((k) => !keys.includes(k))
-  )
-    throw invalid();
-  return v as Record<string, unknown>;
-}
 function text(v: unknown, max = 200): string {
   if (typeof v !== 'string' || !v.trim() || v.trim().length > max)
     throw invalid();
@@ -151,7 +148,7 @@ export class ReservesService {
         balanceMinor: string;
       }[]
     >(
-      Prisma.sql`SELECT r.id,r.account_id AS accountId,r.name,r.status,a.currency,CAST(COALESCE((SELECT SUM(m.amount_minor) FROM reserve_movements m WHERE m.household_id=r.household_id AND m.reserve_id=r.id),0) AS TEXT) AS balanceMinor FROM reserves r JOIN accounts a ON a.household_id=r.household_id AND a.id=r.account_id JOIN households h ON h.id=r.household_id WHERE r.household_id=${h} AND (${id ?? null} IS NULL OR r.id=${id ?? null}) AND h.status='active' AND EXISTS(SELECT 1 FROM household_members member WHERE member.household_id=h.id AND member.identity_subject=${i.subject} AND member.status='active') ORDER BY r.name,r.id`,
+      Prisma.sql`SELECT r.id,r.account_id AS accountId,r.name,r.status,a.currency,CAST(COALESCE((SELECT SUM(m.amount_minor) FROM reserve_movements m WHERE m.household_id=r.household_id AND m.reserve_id=r.id),0) AS TEXT) AS balanceMinor FROM reserves r JOIN accounts a ON a.household_id=r.household_id AND a.id=r.account_id JOIN households h ON h.id=r.household_id WHERE r.household_id=${h} AND (${id ?? null} IS NULL OR r.id=${id ?? null}) AND h.status='active' AND EXISTS(SELECT 1 FROM household_members member WHERE member.household_id=h.id AND membeidentity_subject=${i.subject} AND member.status='active') ORDER BY r.name,r.id`,
     );
     return result;
   }
@@ -164,7 +161,7 @@ export class ReservesService {
     return r;
   }
   async create(i: Identity, h: string, value: unknown) {
-    const b = fields(value, ['accountId', 'name']),
+    const b = validateRequest(CreateReserveDto, value),
       account = text(b.accountId),
       name = text(b.name, 100),
       id = crypto.randomUUID(),
@@ -209,7 +206,7 @@ export class ReservesService {
     return created;
   }
   async movements(i: Identity, h: string, id: string, value: unknown) {
-    const b = fields(value, ['limit', 'cursor']);
+    const b = validateRequest(ReserveMovementQueryDto, value);
     if (
       b.limit !== undefined &&
       (typeof b.limit !== 'string' || !/^(?:[1-9]|[1-9]\d|100)$/.test(b.limit))
@@ -225,9 +222,9 @@ export class ReservesService {
           !/^[A-Za-z0-9_-]+$/.test(b.cursor)
         )
           throw invalid();
-        const c = fields(
+        const c = validateRequest(
+          ReserveCursorDto,
           JSON.parse(atob(b.cursor.replaceAll('-', '+').replaceAll('_', '/'))),
-          ['movementDate', 'id'],
         );
         if (Object.keys(c).length !== 2 || text(c.id) !== c.id) throw invalid();
         cursor = { movementDate: validateDate(c.movementDate), id: text(c.id) };
@@ -276,7 +273,7 @@ export class ReservesService {
     return { movements, nextCursor };
   }
   async move(i: Identity, h: string, id: string, value: unknown) {
-    const b = fields(value, ['type', 'amountMinor']);
+    const b = validateRequest(ReserveMovementDto, value);
     if (b.type !== 'allocation' && b.type !== 'release') throw invalid();
     let amount: bigint;
     try {
@@ -354,37 +351,40 @@ export class ReservesService {
 @Controller('api/v1/households/:householdId/reserves')
 export class ReservesController {
   constructor(private readonly service: ReservesService) {}
-  @Get() list(@Req() r: AuthRequest, @Param('householdId') h: string) {
-    return this.service.list(r.identity, h);
+  @Get() list(
+    @CurrentIdentity() identity: Identity,
+    @Param('householdId') h: string,
+  ) {
+    return this.service.list(identity, h);
   }
   @Post() create(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
-    @Body() b: unknown,
+    @Body() b: CreateReserveDto,
   ) {
-    return this.service.create(r.identity, h, b);
+    return this.service.create(identity, h, b);
   }
   @Get(':id') get(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
   ) {
-    return this.service.get(r.identity, h, id);
+    return this.service.get(identity, h, id);
   }
   @Get(':id/movements') movements(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
-    @Query() q: unknown,
+    @Query() q: ReserveMovementQueryDto,
   ) {
-    return this.service.movements(r.identity, h, id, q);
+    return this.service.movements(identity, h, id, q);
   }
   @Post(':id/movements') move(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
-    @Body() b: unknown,
+    @Body() b: ReserveMovementDto,
   ) {
-    return this.service.move(r.identity, h, id, b);
+    return this.service.move(identity, h, id, b);
   }
 }

@@ -1,3 +1,6 @@
+import { MonthlyReportQueryDto } from './reports.dto.js';
+import { validateRequest } from '../validation/request-dto.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import {
   Controller,
   Get,
@@ -5,10 +8,9 @@ import {
   Injectable,
   Param,
   Query,
-  Req,
 } from '@nestjs/common';
 import { apiError } from '../auth/auth.errors.js';
-import type { AuthRequest, Identity } from '../auth/auth.types.js';
+import type { Identity } from '../auth/auth.types.js';
 import { DATABASE } from '../database/database.tokens.js';
 import type { Database } from '../database/database.types.js';
 import {
@@ -220,16 +222,7 @@ export class ReportsService {
     );
   }
   async monthly(i: Identity, h: string, query: unknown) {
-    if (
-      !query ||
-      typeof query !== 'object' ||
-      Array.isArray(query) ||
-      Object.keys(query).some(
-        (k) => !['month', 'categoryId', 'merchant'].includes(k),
-      )
-    )
-      throw invalid();
-    const q = query as Record<string, unknown>;
+    const q = validateRequest(MonthlyReportQueryDto, query);
     const text = (v: unknown) => {
       if (typeof v !== 'string' || !v.trim() || v.trim().length > 200)
         throw invalid();
@@ -304,16 +297,16 @@ export class ReportsService {
 export class ReportsController {
   constructor(private readonly service: ReportsService) {}
   @Get('reports/monthly') monthly(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
-    @Query() q: unknown,
+    @Query() q: MonthlyReportQueryDto,
   ) {
-    return this.service.monthly(r.identity, h, q);
+    return this.service.monthly(identity, h, q);
   }
   @Get('dashboard') dashboard(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
   ) {
-    return this.service.dashboard(r.identity, h);
+    return this.service.dashboard(identity, h);
   }
 }

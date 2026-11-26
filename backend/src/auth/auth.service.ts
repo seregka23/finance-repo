@@ -1,6 +1,8 @@
 import { HttpException, Inject, Injectable } from '@nestjs/common';
 import { DATABASE } from '../database/database.tokens.js';
 import type { Database } from '../database/database.types.js';
+import { validateRequest } from '../validation/request-dto.js';
+import { CredentialsDto } from './auth.dto.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Identity } from './auth.types.js';
 import {
@@ -20,11 +22,8 @@ import {
 } from './auth.crypto.js';
 
 function credentials(body: unknown): { email: string; password: string } {
-  if (!body || typeof body !== 'object' || Array.isArray(body))
-    throw apiError(400, 'INVALID_INPUT', 'Invalid input');
-  const b = body as Record<string, unknown>;
+  const b = validateRequest(CredentialsDto, body);
   if (
-    Object.keys(b).some((k) => k !== 'email' && k !== 'password') ||
     typeof b.email !== 'string' ||
     b.email.length > 254 ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email) ||

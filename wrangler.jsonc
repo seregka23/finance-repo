@@ -15,8 +15,6 @@
   // normal missing-package behavior without requiring unused feature stacks.
   // Install the real package and remove its alias before enabling that feature.
   "alias": {
-    "class-validator": "./backend/cloudflare/missing-optional-package.mjs",
-    "class-transformer": "./backend/cloudflare/missing-optional-package.mjs",
     "@nestjs/microservices": "./backend/cloudflare/missing-optional-package.mjs",
     "@nestjs/microservices/microservices-module.js": "./backend/cloudflare/missing-optional-package.mjs",
     "@nestjs/websockets/socket-module.js": "./backend/cloudflare/missing-optional-package.mjs"

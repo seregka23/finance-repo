@@ -3,28 +3,27 @@ import { apiError } from '../auth/auth.errors.js';
 import type { Identity } from '../auth/auth.types.js';
 import { validateDate } from '../finance/calendar.js';
 import { parseMinor, validateCurrency } from '../finance/money.js';
+import { validateRequest } from '../validation/request-dto.js';
+import {
+  CreateAccountDto,
+  UpdateAccountDto,
+  AccountVersionDto,
+  AccountAdjustmentDto,
+  AccountListQueryDto,
+  MovementQueryDto,
+} from './accounts.dto.js';
 import { AccountsRepository } from './accounts.repository.js';
 import type { AccountInput } from './accounts.types.js';
 
 const invalid = () => apiError(400, 'INVALID_INPUT', 'Invalid input');
 const metadata = ['name', 'type', 'currency', 'ownerMemberId', 'designation'];
-function fields(value: unknown, allowed: string[]): Record<string, unknown> {
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    Object.keys(value).some((key) => !allowed.includes(key))
-  )
-    throw invalid();
-  return value as Record<string, unknown>;
-}
 function text(value: unknown, max = 200): string {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max)
     throw invalid();
   return value.trim();
 }
 function accountMetadata(
-  body: Record<string, unknown>,
+  body: CreateAccountDto | UpdateAccountDto,
 ): Pick<AccountInput, 'bankName' | 'cardLastFour'> {
   if (!('bankName' in body) && !('cardLastFour' in body)) return {};
   if (!('bankName' in body) || !('cardLastFour' in body)) throw invalid();
@@ -40,7 +39,7 @@ function accountMetadata(
     cardLastFour: body.cardLastFour,
   };
 }
-function input(body: Record<string, unknown>): AccountInput {
+function input(body: CreateAccountDto | UpdateAccountDto): AccountInput {
   if (
     metadata.some((key) => !(key in body)) ||
     (body.type !== 'cash' && body.type !== 'bank' && body.type !== 'card') ||
@@ -57,11 +56,6 @@ function input(body: Record<string, unknown>): AccountInput {
     ...accountMetadata(body),
   };
 }
-function version(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1)
-    throw invalid();
-  return value;
-}
 function validate<T>(read: () => T): T {
   try {
     return read();
@@ -74,13 +68,7 @@ export class AccountsService {
   constructor(private readonly repository: AccountsRepository) {}
   create(identity: Identity, householdId: string, body: unknown) {
     const value = validate(() => {
-      const b = fields(body, [
-        ...metadata,
-        'bankName',
-        'cardLastFour',
-        'openingBalanceMinor',
-        'openingDate',
-      ]);
+      const b = validateRequest(CreateAccountDto, body);
       const account = input(b);
       const amount = parseMinor(b.openingBalanceMinor);
       if (amount < 0n) throw invalid();
@@ -100,13 +88,8 @@ export class AccountsService {
   }
   update(identity: Identity, householdId: string, id: string, body: unknown) {
     const value = validate(() => {
-      const b = fields(body, [
-        ...metadata,
-        'bankName',
-        'cardLastFour',
-        'version',
-      ]);
-      return { account: input(b), version: version(b.version) };
+      const b = validateRequest(UpdateAccountDto, body);
+      return { account: input(b), version: b.version };
     });
     return this.repository.update(
       identity,
@@ -123,7 +106,7 @@ export class AccountsService {
     status: 'active' | 'archived',
     body: unknown,
   ) {
-    const v = version(fields(body, ['version']).version);
+    const v = validateRequest(AccountVersionDto, body).version;
     return this.repository.setStatus(
       identity,
       householdId,
@@ -134,13 +117,13 @@ export class AccountsService {
   }
   adjust(identity: Identity, householdId: string, id: string, body: unknown) {
     const value = validate(() => {
-      const b = fields(body, ['amountMinor', 'movementDate', 'version']);
+      const b = validateRequest(AccountAdjustmentDto, body);
       const amount = parseMinor(b.amountMinor);
       if (amount === 0n) throw invalid();
       return {
         amount: amount.toString(),
         date: validateDate(b.movementDate),
-        version: version(b.version),
+        version: b.version,
       };
     });
     return this.repository.adjust(
@@ -156,7 +139,7 @@ export class AccountsService {
     return this.repository.get(identity, householdId, text(id));
   }
   list(identity: Identity, householdId: string, query: unknown) {
-    const q = fields(query, ['status']);
+    const q = validateRequest(AccountListQueryDto, query);
     const status = q.status ?? 'all';
     if (status !== 'all' && status !== 'active' && status !== 'archived')
       throw invalid();
@@ -169,7 +152,7 @@ export class AccountsService {
     query: unknown,
   ) {
     const options = validate(() => {
-      const q = fields(query, ['limit', 'cursor']);
+      const q = validateRequest(MovementQueryDto, query);
       if (
         q.limit !== undefined &&
         (typeof q.limit !== 'string' ||
@@ -187,7 +170,11 @@ export class AccountsService {
         const decoded: unknown = JSON.parse(
           atob(q.cursor.replaceAll('-', '+').replaceAll('_', '/')),
         );
-        const c = fields(decoded, ['movementDate', 'id']);
+        if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded))
+          throw invalid();
+        const c = decoded as Record<string, unknown>;
+        if (Object.keys(c).some((k) => !['movementDate', 'id'].includes(k)))
+          throw invalid();
         if (Object.keys(c).length !== 2 || text(c.id) !== c.id) throw invalid();
         cursor = { movementDate: validateDate(c.movementDate), id: text(c.id) };
       }

@@ -13,6 +13,8 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { validateRequest } from './validation/request-dto.js';
+import { ProbeDto } from './validation/probe.dto.js';
 import { PrismaService } from './database/prisma.service.js';
 
 interface Probe {
@@ -77,20 +79,16 @@ export class InfrastructureProbeController {
   constructor(private readonly service: InfrastructureProbeService) {}
 
   @Post()
-  create(@Req() request: Request, @Body() body: unknown): Promise<Probe> {
+  create(@Req() request: Request, @Body() body: ProbeDto): Promise<Probe> {
     validateHost(request);
-    if (
-      typeof body !== 'object' ||
-      body === null ||
-      Array.isArray(body) ||
-      Object.keys(body).length !== 1 ||
-      !('value' in body) ||
-      typeof body.value !== 'string' ||
-      body.value.length < 1 ||
-      body.value.length > 256
-    )
+    const probe = validateRequest(
+      ProbeDto,
+      body,
+      () => new BadRequestException('Invalid probe body'),
+    );
+    if (probe.value.length < 1 || probe.value.length > 256)
       throw new BadRequestException('Invalid probe body');
-    return this.service.create(body.value);
+    return this.service.create(probe.value);
   }
 
   @Get(':id')

@@ -1,3 +1,6 @@
+import { PlanQueryDto, CreatePlanDto, UpdatePlanDto } from './plans.dto.js';
+import { validateRequest } from '../validation/request-dto.js';
+import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import {
   Body,
   Controller,
@@ -10,10 +13,9 @@ import {
   Patch,
   Post,
   Query,
-  Req,
 } from '@nestjs/common';
 import { apiError, unavailable } from '../auth/auth.errors.js';
-import type { AuthRequest, Identity } from '../auth/auth.types.js';
+import type { Identity } from '../auth/auth.types.js';
 import { DATABASE } from '../database/database.tokens.js';
 import type { Database } from '../database/database.types.js';
 import {
@@ -27,16 +29,6 @@ import { HouseholdAccessService } from '../households/household-access.service.j
 
 const invalid = () => apiError(400, 'INVALID_INPUT', 'Invalid input');
 const notFound = () => apiError(404, 'PLAN_NOT_FOUND', 'Plan not found');
-function fields(v: unknown, allowed: string[]): Record<string, unknown> {
-  if (
-    !v ||
-    typeof v !== 'object' ||
-    Array.isArray(v) ||
-    Object.keys(v).some((k) => !allowed.includes(k))
-  )
-    throw invalid();
-  return v as Record<string, unknown>;
-}
 function text(v: unknown): string {
   if (typeof v !== 'string' || !v.trim() || v.trim().length > 200)
     throw invalid();
@@ -246,7 +238,7 @@ export class PlansService {
     }
   }
   async list(i: Identity, h: string, value: unknown) {
-    const q = fields(value, ['month']);
+    const q = validateRequest(PlanQueryDto, value);
     const household = await this.access.get(i, h);
     const m =
       q.month === undefined
@@ -259,7 +251,7 @@ export class PlansService {
     };
   }
   async create(i: Identity, h: string, value: unknown) {
-    const b = fields(value, ['month', 'categoryId', 'limitMinor']);
+    const b = validateRequest(CreatePlanDto, value);
     const m = month(b.month),
       category = text(b.categoryId),
       limit = amount(b.limitMinor),
@@ -328,7 +320,7 @@ export class PlansService {
   }
   async update(i: Identity, h: string, id: string, value: unknown) {
     id = text(id);
-    const limit = amount(fields(value, ['limitMinor']).limitMinor),
+    const limit = amount(validateRequest(UpdatePlanDto, value).limitMinor),
       current = await this.existing(i, h, id),
       now = new Date().toISOString();
     const r = await this.batch(
@@ -403,32 +395,32 @@ export class PlansService {
 export class PlansController {
   constructor(private readonly service: PlansService) {}
   @Get() list(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
-    @Query() q: unknown,
+    @Query() q: PlanQueryDto,
   ) {
-    return this.service.list(r.identity, h, q);
+    return this.service.list(identity, h, q);
   }
   @Post() create(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
-    @Body() b: unknown,
+    @Body() b: CreatePlanDto,
   ) {
-    return this.service.create(r.identity, h, b);
+    return this.service.create(identity, h, b);
   }
   @Patch(':id') update(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
-    @Body() b: unknown,
+    @Body() b: UpdatePlanDto,
   ) {
-    return this.service.update(r.identity, h, id, b);
+    return this.service.update(identity, h, id, b);
   }
   @Delete(':id') @HttpCode(204) remove(
-    @Req() r: AuthRequest,
+    @CurrentIdentity() identity: Identity,
     @Param('householdId') h: string,
     @Param('id') id: string,
   ) {
-    return this.service.remove(r.identity, h, id);
+    return this.service.remove(identity, h, id);
   }
 }

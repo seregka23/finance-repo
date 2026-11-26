@@ -11,7 +11,13 @@ import {
   notFound,
   ownerRequired,
 } from './households.errors.js';
-import { input, name, timezone, email } from './households.validation.js';
+import { validateRequest } from '../validation/request-dto.js';
+import {
+  HouseholdDto,
+  InviteDto,
+  AcceptInvitationDto,
+} from './households.dto.js';
+import { name, timezone, email } from './households.validation.js';
 import { encode, hash } from './households.tokens.js';
 
 @Injectable()
@@ -56,7 +62,7 @@ export class HouseholdsService {
     }
   }
   async create(identity: Identity, body: unknown) {
-    const b = input(body, ['name', 'timeZone']);
+    const b = validateRequest(HouseholdDto, body);
     const n = name(b.name);
     const tz =
       b.timeZone === undefined ? 'Europe/Belgrade' : timezone(b.timeZone);
@@ -89,7 +95,7 @@ export class HouseholdsService {
     };
   }
   async update(identity: Identity, id: string, body: unknown) {
-    const b = input(body, ['name', 'timeZone']);
+    const b = validateRequest(HouseholdDto, body);
     if (!Object.keys(b).length) throw invalid();
     const current = await this.access.get(identity, id);
     if (current.role !== 'owner') throw ownerRequired();
@@ -139,7 +145,7 @@ export class HouseholdsService {
     }
   }
   async invite(identity: Identity, id: string, body: unknown) {
-    const b = input(body, ['email']);
+    const b = validateRequest(InviteDto, body);
     const mail = email(b.email);
     const household = await this.access.get(identity, id);
     if (household.role !== 'owner') throw ownerRequired();
@@ -177,7 +183,7 @@ export class HouseholdsService {
     };
   }
   async accept(identity: Identity, body: unknown) {
-    const b = input(body, ['token']);
+    const b = validateRequest(AcceptInvitationDto, body);
     if (typeof b.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(b.token))
       throw invitationInvalid();
     const tokenHash = await hash(b.token),

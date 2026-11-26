@@ -1,19 +1,6 @@
 import { validateTimeZone } from '../finance/calendar.js';
 import { invalid } from './households.errors.js';
 
-export function input(
-  body: unknown,
-  allowed: string[],
-): Record<string, unknown> {
-  if (
-    !body ||
-    typeof body !== 'object' ||
-    Array.isArray(body) ||
-    Object.keys(body).some((k) => !allowed.includes(k))
-  )
-    throw invalid();
-  return body as Record<string, unknown>;
-}
 export function name(value: unknown): string {
   if (
     typeof value !== 'string' ||
