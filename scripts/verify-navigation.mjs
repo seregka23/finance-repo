@@ -566,6 +566,64 @@ async function run() {
       await page.getByRole("button", { name: merchant, exact: true }).waitFor();
       assert.equal(await balance(), "98766");
 
+      await check(
+        "saved transaction is visible in an independent signed-in browser session",
+        async () => {
+          const secondContext = await browser.newContext({
+            locale: "en-US",
+            viewport: { width: 390, height: 844 },
+          });
+          try {
+            const secondPage = await secondContext.newPage();
+            secondPage.on("pageerror", (error) =>
+              pageErrors.push(error.message),
+            );
+            const primarySession = (await context.cookies(base)).find(
+              (cookie) => cookie.name === "finance_session",
+            )?.value;
+            assert.ok(
+              primarySession,
+              "primary context has an authenticated session",
+            );
+            const login = await secondContext.request.post(
+              `${base}/api/v1/auth/login`,
+              {
+                headers: { Origin: base },
+                data: {
+                  email: "newcomer@example.invalid",
+                  password: "Fixture-password-2026!",
+                },
+              },
+            );
+            assert.equal(login.status(), 200, await login.text());
+            const secondSession = (await secondContext.cookies(base)).find(
+              (cookie) => cookie.name === "finance_session",
+            )?.value;
+            assert.ok(
+              secondSession,
+              "second context has an authenticated session",
+            );
+            assert.ok(
+              secondSession !== primarySession,
+              "second context logs in and receives its own session token",
+            );
+            await secondPage.goto(`${base}/transactions`);
+            await secondPage
+              .getByLabel("Household", { exact: true })
+              .selectOption(selected);
+            await secondPage
+              .getByRole("button", { name: merchant, exact: true })
+              .waitFor();
+            assert.ok(
+              await secondPage.getByText(/12\.34\s+RSD/).isVisible(),
+              "independent session shows the saved exact amount",
+            );
+          } finally {
+            await secondContext.close();
+          }
+        },
+      );
+
       const rowPath = `${path}/transactions/${created.id}`;
       const rowUrl = `${transactionUrl}/${created.id}`;
       await page.getByRole("button", { name: "Edit", exact: true }).click();
@@ -1369,13 +1427,17 @@ async function run() {
         axe: "Zero WCAG A/AA violations in the scanned route, chooser, form and detail states",
         pageErrors,
         fixture: "actual local Worker/D1 with native synthetic accounts",
+        sessions:
+          "independent authenticated Chromium contexts saw one saved transaction",
       },
       null,
       2,
     ),
   );
   console.log(
-    `Navigation verification passed (${checks.length} groups). Artifacts: ${artifacts}`,
+    `Navigation verification passed (${checks.length} groups).`,
+    "Verified two isolated authenticated Chromium contexts.",
+    `Artifacts: ${artifacts}`,
   );
 }
 for (const [name, code] of [

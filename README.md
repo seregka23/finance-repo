@@ -190,7 +190,8 @@ authorized workspace summary. Open Transactions to record an expense, income,
 transfer or refund, search and filter the list, and review, edit or void a saved
 transaction. Dashboard's Add transaction menu also leads to manual entry.
 Add transaction and Add account open modal forms with keyboard dismissal.
-SMS and image import are planned for later issues.
+Transactions also supports reviewing drafts from pasted bank messages and
+receipt images before confirmation.
 
 To run the full local navigation/accessibility check:
 
@@ -296,7 +297,9 @@ The body accepts only one string field of 1–256 characters. These routes are
 absent from default/test/production deployments; this is not a financial API.
 
 See [issue #3 verification and decisions](docs/verification/issue-3.md) for the
-acceptance record and remaining production decisions.
+original infrastructure verification. See [MVP acceptance](docs/verification/issue-22.md)
+and [production readiness](docs/verification/production-readiness.md) for the
+current test results, D1 Time Travel drill and decisions before launch.
 
 For separate Node/Angular development, use two terminals after the root install:
 

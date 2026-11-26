@@ -1,0 +1,63 @@
+# Issue #22 §15 acceptance record
+
+Scope and source: [issue #22](https://github.com/seregka23/finance-repo/issues/22) and the section 15 acceptance checklist in [issue #2](https://github.com/seregka23/finance-repo/issues/2). These checks use synthetic households and records. “Pass” means the named local verifier asserted the observed result; it does not imply production launch acceptance.
+
+## Scenario traceability
+
+| # | Scenario and exact expectation | Observed result / evidence |
+|---:|---|---|
+| 1 | First sign-in and cross-device use: new household has empty states; saved transaction remains visible after refresh and another signed-in session. | **Pass locally.** `verify-navigation.mjs` creates a new household and confirms the empty dashboard; checks refresh; now creates a second isolated Chromium context, logs in independently, asserts its session token differs without printing either token, and sees the posted 12.34 RSD transaction in the same household. This is separate authenticated browser sessions against one Worker, not a physical second device. |
+| 2 | Invitation, revocation and cross-household ID access: invitee gains access after acceptance, loses read/write after revocation, and foreign household data is not exposed. | **Pass.** `verify-access.mjs` passes invitation acceptance, scoped ID rejection, revocation of existing sessions and guarded writes in its 13-group Worker/D1 suite. |
+| 3 | A 2,000 RSD expense against a 10,000 RSD category budget leaves balance reduced by 2,000 RSD, shows 2,000 RSD actual, 8,000 RSD remaining and 20% utilization. | **Pass.** `verify-navigation.mjs` enters the 2,000 RSD expense and 10,000 RSD monthly limit, then asserts 8,000 RSD remaining and 20% on the 320px budget view. |
+| 4 | A 12,000 RSD transfer with a 100 RSD fee debits sender 12,100 RSD, credits recipient 12,000 RSD and reports expenses of 100 RSD. | **Pass.** `verify-transfers.mjs` asserts sender/recipient balances and fee-only expense totals. |
+| 5 | Transfer 650 EUR to a destination receiving 78,000 RSD: update balances in each currency; transfer principal adds zero income/expense. | **Pass.** `verify-transfers.mjs` asserts `65000` EUR minor units and `7800000` RSD minor units are posted to their respective accounts and reporting shows zero income/expense. |
+| 6 | Pay 12,000 RSD from a 15,000 RSD Utilities reserve: reserve falls to 3,000 RSD, available funds stay unchanged, expense posts once. | **Pass with exact amounts and equivalent reserve name.** `verify-accounts.mjs` seeds a 15,000 RSD reserve, posts a 12,000 RSD funded expense and asserts 3,000 RSD remains; account balance drops 12,000 RSD and available funds remain 35,000 RSD. |
+| 7 | Two concurrent 8,000 RSD expenses from a 10,000 RSD reserve: one posts, one reports available funds, 2,000 RSD remains. | **Pass with exact amounts.** `verify-accounts.mjs` runs competing funded expenses against a `1000000`-minor-unit (10,000 RSD) reserve. It asserts HTTP 201/409, `RESERVE_INSUFFICIENT_FUNDS`, `availableReserveMinor=200000` (2,000 RSD), one spend movement and one expense. |
+| 8 | Replay an identical request creates one expense; stale-version edit conflicts. | **Pass.** `verify-transactions.mjs` asserts identical retries return one stored result and one set of rows, conflicting key reuse is rejected, and stale edit returns 409. |
+| 9 | Injected transfer-batch failure leaves balances unchanged and retains no transaction, fee or idempotency key. | **Pass.** `verify-transfers.mjs` injects late failures and asserts all transfer rows, balances, fee/audit state and key roll back; the same key succeeds on retry after removing the trigger. |
+| 10 | Clean local D1 migration works; a test Worker can read/write a separate test D1. | **Pass locally.** `verify-local-d1.mjs` migrates a fresh disposable D1 store, checks Worker health and API create/read, verifies migration replay and cleanup. **Remote test Worker smoke remains blocked** by the environment approval/proxy restrictions recorded in [production readiness](production-readiness.md). Read-only Cloudflare metadata is not a runtime smoke test. |
+| 11 | Refund 1,000 RSD in the month after a 5,000 RSD purchase: credit on refund date, later-month expenses reduce by 1,000 RSD, purchase month retains 5,000 RSD. | **Pass.** `verify-refunds.mjs` asserts account balances, January/February transaction dates, category inheritance, and monthly totals of 5,000 RSD expense then -1,000 RSD expense. |
+| 12 | Filtered CSV matches filters, includes fees, preserves original currencies. | **Pass.** `verify-transactions.mjs` checks filtered cursor reads and CSV export, including original-currency transfer legs and fees; `verify-navigation.mjs` checks browser filters and export request/download. |
+| 13 | Repeating the same historical import preserves record counts, account balances and monthly totals. | **Pass on synthetic historical fixtures only.** `verify-historical-trial.mjs` compares repeat-run controls, retains parent/leg/fee references and refund dates, and rejects changed replays. Real historical source data was not supplied; the tool's missing-coverage case returns an input list. |
+| 14 | Pasted bank SMS and notification screenshot produce extracted drafts; balances change only after confirmation. | **Pass with synthetic recognizer fixtures.** `verify-access.mjs` checks SMS and image/screenshot extraction, saved drafts, validation/error paths, and unchanged financial snapshots before confirmation. Provider calls are stubbed. |
+| 15 | Receipt photo added after SMS expense attaches receipt lines to the existing expense without another debit. | **Pass.** `verify-access.mjs` confirms the receipt against the existing transaction, races duplicate confirmation, asserts one item set and unchanged account movement/balance. |
+| 16 | Two purchases with same date, amount and merchant show a possible match while still allowing a separate purchase. | **Pass in synthetic import flow.** `verify-access.mjs` asserts a possible-duplicate candidate appears and confirmation as a separate transaction gets a different transaction ID. |
+| 17 | OpenAI and Gemini category adapters use identical test inputs/category lists, shared output shape, user override, and leave category unset on refusal/invalid suggestions. | **Pass for both adapters using deterministic local fixtures.** Ran `verify-access.mjs` once with its default OpenAI adapter and once with `--gemini`; both assert eligible category selection, shared result contract, manual override, refusal/invalid/unoffered choices and provider failure handling. API credentials were not used and no live provider request was made. |
+| 18 | Unreadable photo or unknown currency allows correction, retry or manual entry. | **Partial.** `verify-access.mjs` asserts unreadable extraction returns `EXTRACTION_UNREADABLE`, unknown-currency data is flagged `MISSING_ESSENTIALS`, and correction/manual-entry paths are available in the client workflow. It does not exercise every repair path for every combination of unreadable image and currency. |
+| 19 | Two simultaneous confirmations of the same draft create one transaction and one receipt-line set in D1. | **Pass.** `verify-access.mjs` sends concurrent confirmation requests; both resolve to the same transaction, and row counts show one transaction, movement/idempotency set and receipt item. |
+| 20 | Desktop and mobile navigation/forms/filters/controls work; required fields are accessible, amounts fit, errors are readable. | **Pass for automated local browser coverage.** `verify-navigation.mjs` checks six routes at desktop and mobile sizes, 320px reflow, manual entry, reserves, budgets, reports, import review, keyboard/focus behavior and `axe-core` WCAG A/AA scans. `verify-localization-ui.mjs` also passes 13 Chromium/axe groups. This is browser automation, not assistive-technology user testing on physical devices. |
+
+## Commands and results
+
+Commands below ran from the repository root. Worker/Browser scripts used `XDG_CONFIG_HOME=/tmp/finance-wrangler-config WRANGLER_SEND_METRICS=false` to keep Wrangler config/log files in `/tmp`; no Cloudflare credentials or provider keys were used.
+
+| Command | Result |
+|---|---|
+| `npm --prefix backend test` | 20 files, 140 tests passed. |
+| `npm --prefix frontend test -- --watch=false` | 11 files, 45 tests passed. |
+| `node scripts/verify-local-d1.mjs` (with Wrangler env above) | Fresh local migration, Worker/API read/write, migration replay and cleanup passed. |
+| `node scripts/verify-access.mjs` and `node scripts/verify-access.mjs --gemini` (with Wrangler env above) | Each passed 13 groups; both synthetic category adapters checked. |
+| `node scripts/verify-transactions.mjs` (with Wrangler env above) | 18 groups passed, including idempotency, stale version, races, rollback, filters and CSV. |
+| `node scripts/verify-accounts.mjs` (with Wrangler env above) | 19 groups passed, including reserve race, reserve-funded spend, monthly plan calculations and rollback. |
+| `node scripts/verify-transfers.mjs` (with Wrangler env above) | 10 groups passed, including fee/FX exact amounts and injected rollback. |
+| `node scripts/verify-refunds.mjs` (with Wrangler env above) | 13 groups passed, including cross-month refund, FX allocation, concurrency and rollback. |
+| `node scripts/verify-historical-trial.mjs` | Synthetic repeat/reconciliation trial checks passed; actual source files were absent and reported as required input. |
+| `node scripts/verify-schema.mjs` (with Wrangler env above) | 13 groups passed, including fresh upgrade, constraints, race arbitration and replay. |
+| `node scripts/verify-navigation.mjs` (with Wrangler env above) | 15 groups passed; includes two separately authenticated Chromium contexts and mobile/desktop routes. Browser artifacts are in ignored `.cloudflare/navigation-verification/`. |
+| `node scripts/verify-localization-ui.mjs` (with Wrangler env above) | 13 Chromium/axe groups passed. |
+| `npm run verify:local` | **Blocked before the local D1 script:** Prisma schema engine download returned `403 Forbidden`. Retrying with `PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1` still failed because the engine file itself returned `403`. Direct `node scripts/verify-local-d1.mjs` passed using the already-built local Worker. |
+
+## Outstanding limits and launch decisions
+
+- The independent cross-session check runs two isolated authenticated browser contexts against the same local Worker and household. Physical-device coverage is still a manual deployment check.
+- Remote test Worker HTTP smoke was not completed. The environment blocked the attempted route via proxy `CONNECT 403`, and automatic approval review rejected creation of a temporary network-accessible Worker. See [production readiness and D1 recovery record](production-readiness.md), which includes the separate disposable D1 Time Travel drill.
+- The trial migration used synthetic fixtures because approved historical-source snapshots and independent production controls were not present. No production data was read or changed.
+- The OpenAI and Gemini adapter tests use deterministic mock responses. Live external provider availability, chosen launch provider, credentials and data controls remain unverified.
+- No production migration or deployment was performed. Production hostname/database and launch decisions remain outstanding as recorded in [production readiness](production-readiness.md).
+
+## Tester execution record
+
+- Role config: `.codex/agents/tester.toml` requests model `gpt-6-luna`, reasoning effort `medium`. Effective runtime model and reasoning telemetry were unavailable, so this configuration is not treated as confirmation of the effective runtime.
+- The tester ran from 09:20:35 to 09:37:33 UTC on 2026-11-26. The elapsed time of 16 minutes and 58 seconds includes waits and tool execution.
+- Per-agent input/output and cached token usage: unavailable; runtime usage telemetry was not exposed.
+- Skills read and applied: `.agents/skills/angular-developer/SKILL.md`; references `reactive-forms.md`, `http-client.md`, `e2e-testing.md`, `testing-fundamentals.md`, `angular-aria.md`, `define-routes.md`, and `router-testing.md`; `.agents/skills/nestjs-best-practices/SKILL.md`; rules `test-e2e-supertest.md`, `test-mock-external-services.md`, `test-use-testing-module.md`, `db-use-transactions.md`, `security-validate-all-input.md`, `security-use-guards.md`, and `db-use-migrations.md`. Applied existing Vitest/TestBed conventions, real local Worker/D1 integration checks, deterministic external-service fixtures, separate browser contexts, accessibility scans, and data-isolation/atomicity assertions. No skill-bundled executable was run.
