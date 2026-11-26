@@ -1,0 +1,46 @@
+<button #trigger type="button" class="textbtn" (click)="open()">{{ i18n.t('Feedback') }}</button>
+<dialog
+  #dialog
+  class="creation-dialog"
+  aria-labelledby="feedback-heading"
+  (keydown)="containFocus($event)"
+  (close)="restore()"
+>
+  <div class="dialogbody">
+    <div class="dialoghead">
+      <h2 id="feedback-heading">{{ i18n.t('Send feedback') }}</h2>
+      <button type="button" class="btn" (click)="close()">{{ i18n.t('Close') }}</button>
+    </div>
+    @if (issue(); as sent) {
+      <p role="status">{{ i18n.t('Feedback sent.') }}</p>
+      <a id="feedback-issue-link" [href]="sent.url" target="_blank" rel="noopener noreferrer">{{
+        i18n.t('View issue #{number}', { number: sent.number })
+      }}</a>
+    } @else {
+      <p class="notice">
+        {{
+          i18n.t(
+            'Your title and message will be public on GitHub. Do not include private or sensitive information.'
+          )
+        }}
+      </p>
+      @if (error()) {
+        <p class="alert" role="alert">{{ i18n.t(error()) }}</p>
+      }
+      <form (submit)="$event.preventDefault(); send()">
+        <label for="feedback-title">{{ i18n.t('Title') }}</label>
+        <input id="feedback-title" class="field" [formField]="feedbackForm.title" autofocus />
+        <label for="feedback-message">{{ i18n.t('Message') }}</label>
+        <textarea
+          id="feedback-message"
+          class="field"
+          [formField]="feedbackForm.message"
+          rows="6"
+        ></textarea>
+        <button class="btn primary" type="submit" [disabled]="pending()">
+          {{ i18n.t(pending() ? 'Sending…' : 'Send feedback') }}
+        </button>
+      </form>
+    }
+  </div>
+</dialog>

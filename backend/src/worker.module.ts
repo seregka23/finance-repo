@@ -45,6 +45,11 @@ import {
   ImportReviewController,
   ImportReviewService,
 } from './imports/import-review.js';
+import {
+  FEEDBACK_TOKEN,
+  FeedbackController,
+  FeedbackService,
+} from './feedback/feedback.js';
 import { DATABASE, HealthController } from './health.controller.js';
 
 @Module({
@@ -57,6 +62,7 @@ export class WorkerModule {
     probeEnabled = false,
     extractionKey: string | null = null,
     decisionConfig: CategoryDecisionConfig = {},
+    feedbackToken: string | null = null,
   ): DynamicModule {
     return {
       module: WorkerModule,
@@ -72,6 +78,7 @@ export class WorkerModule {
         ReportsController,
         ExtractionController,
         ImportReviewController,
+        FeedbackController,
         ...(probeEnabled ? [InfrastructureProbeController] : []),
       ],
       providers: [
@@ -91,6 +98,8 @@ export class WorkerModule {
         ReportsService,
         ExtractionService,
         ImportReviewService,
+        FeedbackService,
+        { provide: FEEDBACK_TOKEN, useValue: feedbackToken },
         CategoryDecisionService,
         { provide: CATEGORY_DECISION_CONFIG, useValue: decisionConfig },
         { provide: EXTRACTION_KEY, useValue: extractionKey },

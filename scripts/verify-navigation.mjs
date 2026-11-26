@@ -180,6 +180,75 @@ async function run() {
       );
     },
   );
+  await check(
+    "profile feedback is accessible and sends an issue on mobile",
+    async () => {
+      const profile = page.locator(".profile-menu summary");
+      const feedback = page.getByRole("button", {
+        name: "Feedback",
+        exact: true,
+      });
+      const dialog = page.getByRole("dialog", {
+        name: "Send feedback",
+        exact: true,
+      });
+      const title = dialog.getByRole("textbox", { name: "Title", exact: true });
+      const message = dialog.getByRole("textbox", {
+        name: "Message",
+        exact: true,
+      });
+      for (const [width, height] of [
+        [1440, 1000],
+        [320, 740],
+      ]) {
+        await page.setViewportSize({ width, height });
+        await profile.click();
+        await feedback.click();
+        await dialog.waitFor();
+        assert.ok(
+          await dialog.getByText(/will be public on GitHub/).isVisible(),
+        );
+        assert.ok(
+          await title.evaluate((field) => field === document.activeElement),
+        );
+        const bounds = await dialog.boundingBox();
+        assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width);
+        await axe(page, `${width}px feedback dialog`);
+        await screenshot(page, `feedback-${width}px`);
+        if (width === 1440) {
+          await page.keyboard.press("Escape");
+          await dialog.waitFor({ state: "hidden" });
+          assert.ok(
+            await profile.evaluate(
+              (summary) =>
+                summary === document.activeElement ||
+                summary.parentElement.contains(document.activeElement),
+            ),
+          );
+          if (await profile.evaluate((summary) => summary.parentElement.open))
+            await profile.click();
+        }
+      }
+      await title.fill("Feedback fixture browser");
+      await message.fill("Synthetic feedback message");
+      await dialog
+        .getByRole("button", { name: "Send feedback", exact: true })
+        .click();
+      const issue = dialog.getByRole("link", { name: /issue.*42/i });
+      await issue.waitFor();
+      await page.waitForFunction(
+        () => document.activeElement?.id === "feedback-issue-link",
+      );
+      assert.equal(
+        await issue.getAttribute("href"),
+        "https://github.com/seregka23/finance-repo/issues/42",
+      );
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
+      if (await profile.evaluate((summary) => summary.parentElement.open))
+        await profile.click();
+    },
+  );
   for (const [size, width, height] of [
     ["desktop", 1440, 1000],
     ["mobile", 390, 844],

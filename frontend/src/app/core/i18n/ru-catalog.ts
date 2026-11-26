@@ -1,4 +1,22 @@
 export const ru = {
+  Feedback: 'Обратная связь',
+  'Send feedback': 'Отправить отзыв',
+  Title: 'Заголовок',
+  Message: 'Сообщение',
+  'Feedback sent.': 'Отзыв отправлен.',
+  'View issue #{number}': 'Посмотреть обращение №{number}',
+  'Your title and message will be public on GitHub. Do not include private or sensitive information.':
+    'Заголовок и сообщение будут опубликованы на GitHub. Не указывайте личные или конфиденциальные данные.',
+  'Enter a title of 5–100 characters and a message of 10–2000 characters.':
+    'Введите заголовок от 5 до 100 символов и сообщение от 10 до 2000 символов.',
+  'Too many feedback submissions. Please wait and try again.':
+    'Слишком много обращений. Подождите и попробуйте снова.',
+  'Feedback is temporarily unavailable. Please try again later.':
+    'Обратная связь временно недоступна. Попробуйте позже.',
+  'Feedback may have been sent. Check GitHub before trying again.':
+    'Возможно, отзыв уже отправлен. Проверьте GitHub перед повторной отправкой.',
+  'Sending…': 'Отправка…',
+
   'Review required': 'Требуется проверка',
   'Transaction declined': 'Операция отклонена',
   'Settlement pending': 'Расчёт ожидается',

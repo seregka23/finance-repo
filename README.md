@@ -408,6 +408,30 @@ The [recognition API](docs/api/recognition.md) validates drafts from text or one
 JPEG, PNG, or WebP image. A server-side `OPENAI_API_KEY` enables live extraction.
 The local Workerd acceptance tests substitute a provider and use synthetic data.
 
+## Site feedback
+
+Signed-in users can submit a title and message from **Profile → Feedback**.
+Submissions create public issues in `seregka23/finance-repo`. The form reminds
+users to omit private information. The Worker uses only the submitted title
+and message as issue content.
+
+Enable submissions by creating a GitHub fine-grained token for
+`seregka23/finance-repo` with repository permission **Issues: Read and write**.
+In Cloudflare, add `GITHUB_FEEDBACK_TOKEN` as a **Secret** under **Settings →
+Variables and Secrets** for the Worker serving the site. The existing default
+Worker is `finance-repo`. From the repository root, the equivalent Wrangler
+command for that Worker is:
+
+```sh
+npx wrangler secret put GITHUB_FEEDBACK_TOKEN --env ""
+```
+
+Wrangler prompts for the value and deploys the updated secret to that Worker.
+The authenticated endpoint is `POST /api/v1/feedback` and returns the created
+issue number and link. The local Worker verification uses a synthetic GitHub
+stub. [GitHub issue permissions](https://docs.github.com/en/rest/issues/issues#create-an-issue) ·
+[Cloudflare Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
+
 ## Transaction CSV export
 
 Use **Export CSV** on the Transactions page to download all rows that match
