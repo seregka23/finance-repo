@@ -566,6 +566,64 @@ async function run() {
       await page.getByRole("button", { name: merchant, exact: true }).waitFor();
       assert.equal(await balance(), "98766");
 
+      await check(
+        "saved transaction is visible in an independent signed-in browser session",
+        async () => {
+          const secondContext = await browser.newContext({
+            locale: "en-US",
+            viewport: { width: 390, height: 844 },
+          });
+          try {
+            const secondPage = await secondContext.newPage();
+            secondPage.on("pageerror", (error) =>
+              pageErrors.push(error.message),
+            );
+            const primarySession = (await context.cookies(base)).find(
+              (cookie) => cookie.name === "finance_session",
+            )?.value;
+            assert.ok(
+              primarySession,
+              "primary context has an authenticated session",
+            );
+            const login = await secondContext.request.post(
+              `${base}/api/v1/auth/login`,
+              {
+                headers: { Origin: base },
+                data: {
+                  email: "newcomer@example.invalid",
+                  password: "Fixture-password-2026!",
+                },
+              },
+            );
+            assert.equal(login.status(), 200, await login.text());
+            const secondSession = (await secondContext.cookies(base)).find(
+              (cookie) => cookie.name === "finance_session",
+            )?.value;
+            assert.ok(
+              secondSession,
+              "second context has an authenticated session",
+            );
+            assert.ok(
+              secondSession !== primarySession,
+              "second context logs in and receives its own session token",
+            );
+            await secondPage.goto(`${base}/transactions`);
+            await secondPage
+              .getByLabel("Household", { exact: true })
+              .selectOption(selected);
+            await secondPage
+              .getByRole("button", { name: merchant, exact: true })
+              .waitFor();
+            assert.ok(
+              await secondPage.getByText(/12\.34\s+RSD/).isVisible(),
+              "independent session shows the saved exact amount",
+            );
+          } finally {
+            await secondContext.close();
+          }
+        },
+      );
+
       const rowPath = `${path}/transactions/${created.id}`;
       const rowUrl = `${transactionUrl}/${created.id}`;
       await page.getByRole("button", { name: "Edit", exact: true }).click();
@@ -971,6 +1029,16 @@ async function run() {
         201,
         { "Idempotency-Key": "browser-budget-expense" },
       );
+      const fundedAccount = await api(
+        `${path}/accounts/${account.id}`,
+        "GET",
+        undefined,
+        200,
+      );
+      assert.equal(
+        BigInt(account.balanceMinor) - BigInt(fundedAccount.balanceMinor),
+        200000n,
+      );
       await page.setViewportSize({ width: 320, height: 740 });
       await navigate("Budgets");
       const picker = page.getByLabel("Month", { exact: true });
@@ -992,6 +1060,7 @@ async function run() {
       await axe(page, "320px monthly budget dialog");
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await dialog.waitFor({ state: "hidden" });
+      await page.getByText(/2,000\.00\s+RSD/).waitFor();
       await page.getByText(/8,000\.00\s+RSD/).waitFor();
       await page
         .getByText(/20(?:\.00)?%/)
@@ -1193,7 +1262,7 @@ async function run() {
     },
   );
   await check(
-    "mobile SMS import and receipt attachment with real saved drafts",
+    "mobile import correction, photo retry and receipt attachment with saved drafts",
     async () => {
       await page.setViewportSize({ width: 390, height: 844 });
       const householdId = await page
@@ -1255,12 +1324,15 @@ async function run() {
       );
       await page.getByRole("button", { name: "Retry", exact: true }).click();
       assert.equal((await retried).status(), 502);
-      await sms.fill("fixture-import-bank browser SMS");
+      await sms.fill(
+        "fixture-import-bank fixture-unknown-currency browser SMS",
+      );
       await preview.click();
       await page
         .getByRole("heading", { name: "Review draft", exact: true })
         .waitFor();
       const review = page.locator("section.review");
+      await review.getByText("Some essential details are missing").waitFor();
       await review
         .locator('select[formcontrolname="accountId"]')
         .selectOption(account.id);
@@ -1307,13 +1379,38 @@ async function run() {
           .getAttribute("capture"),
         "environment",
       );
-      await page.locator('input[type="file"]:not([capture])').setInputFiles({
+      const fileInput = page.locator('input[type="file"]:not([capture])');
+      const receiptFile = {
         name: "receipt.webp",
         mimeType: "image/webp",
         buffer: Buffer.from(
           "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoCAAIAAUAmJaQAA3AA/vz0AAA=",
           "base64",
         ),
+      };
+      await fileInput.setInputFiles(receiptFile);
+      const previewEndpoint = `${base}/api/v1${path}/imports/preview`;
+      await page.route(
+        previewEndpoint,
+        (route) =>
+          route.fulfill({
+            status: 422,
+            json: { error: { code: "EXTRACTION_UNREADABLE" } },
+          }),
+        { times: 1 },
+      );
+      await preview.click();
+      await page
+        .getByRole("alert")
+        .filter({ hasText: "The source could not be read" })
+        .waitFor();
+      await page
+        .getByRole("link", { name: "Enter manually", exact: true })
+        .waitFor();
+      await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
+      await fileInput.setInputFiles({
+        ...receiptFile,
+        name: "replacement.webp",
       });
       const receiptPreview = page.waitForResponse((response) =>
         response.url().endsWith(`${path}/imports/preview`),
@@ -1369,13 +1466,17 @@ async function run() {
         axe: "Zero WCAG A/AA violations in the scanned route, chooser, form and detail states",
         pageErrors,
         fixture: "actual local Worker/D1 with native synthetic accounts",
+        sessions:
+          "independent authenticated Chromium contexts saw one saved transaction",
       },
       null,
       2,
     ),
   );
   console.log(
-    `Navigation verification passed (${checks.length} groups). Artifacts: ${artifacts}`,
+    `Navigation verification passed (${checks.length} groups).`,
+    "Verified two isolated authenticated Chromium contexts.",
+    `Artifacts: ${artifacts}`,
   );
 }
 for (const [name, code] of [
