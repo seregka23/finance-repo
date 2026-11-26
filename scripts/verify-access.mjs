@@ -300,7 +300,7 @@ export default { async fetch(request,bindings,context) {
       if(request.method !== 'GET' && request.headers.get('origin') !== new URL(request.url).origin) return Response.json({error:{code:'INVALID_ORIGIN'}},{status:403});
       const body=request.method==='GET'?Object.fromEntries(url.searchParams):await request.json();
       const access=new HouseholdAccessService(env.DB,prisma);
-      const categories=new CategoryService(env.DB,access);
+      const categories=new CategoryService(env.DB,access,prisma);
       let statements=[];
       if(url.pathname==='/_verification/category-assert') {
         if(request.method==='GET') statements=[env.DB.prepare('SELECT id FROM access_verification_records WHERE household_id=? AND id=?').bind(body.householdId,body.marker)];

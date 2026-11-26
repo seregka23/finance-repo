@@ -22,6 +22,12 @@ import { apiError } from '../auth/auth.js';
 import type { Identity } from '../auth/auth.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
 import { DATABASE } from '../health.controller.js';
+import { PrismaService } from '../database/prisma.service.js';
+import { Prisma } from '../generated/prisma/client.js';
+import {
+  dbError,
+  notFound as householdNotFound,
+} from '../households/households.errors.js';
 import {
   HouseholdAccessService,
   type Database,
@@ -70,6 +76,7 @@ export class CategoryService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly access: HouseholdAccessService,
+    private readonly prisma: PrismaService,
   ) {}
 
   // Include this assertion in the same authorized batch as the dependent write.
@@ -84,22 +91,42 @@ export class CategoryService {
       )
       .bind(householdId, categoryId, usage);
   }
+  private async read(
+    identity: Identity,
+    householdId: string,
+    status: string,
+    type: string | null,
+    id: string | null,
+  ): Promise<Category[]> {
+    try {
+      const rows = await this.prisma.$queryRaw<
+        (Category | { id: null })[]
+      >(Prisma.sql`
+        SELECT c.id,c.name,c.type,c.status,c.created_at AS createdAt,c.updated_at AS updatedAt
+        FROM households h JOIN household_members m ON m.household_id=h.id
+          AND m.identity_subject=${identity.subject} AND m.status='active'
+        LEFT JOIN categories c ON c.household_id=h.id
+          AND (${status}='all' OR c.status=${status})
+          AND (${type} IS NULL OR c.type=${type}) AND (${id} IS NULL OR c.id=${id})
+        WHERE h.id=${householdId} AND h.status='active' ORDER BY c.name,c.id`);
+      if (!rows.length) throw householdNotFound();
+      return rows.filter((row): row is Category => row.id !== null);
+    } catch (e) {
+      if (e instanceof Error && 'getStatus' in e) throw e;
+      return dbError(e);
+    }
+  }
   async list(identity: Identity, householdId: string, query: unknown) {
     const q = validateRequest(CategoryListQueryDto, query);
-    const status = q.status === undefined ? 'all' : q.status;
-    const [, result] = await this.access.batch(
-      identity,
-      householdId,
-      'member',
-      [
-        this.db
-          .prepare(
-            `SELECT ${columns} FROM categories WHERE household_id=? AND (?='all' OR status=?) ORDER BY name,id`,
-          )
-          .bind(householdId, status, status),
-      ],
-    );
-    return { categories: result.results as unknown as Category[] };
+    return {
+      categories: await this.read(
+        identity,
+        householdId,
+        q.status ?? 'all',
+        null,
+        null,
+      ),
+    };
   }
   async listEligible(
     identity: Identity,
@@ -107,21 +134,14 @@ export class CategoryService {
     usage: CategoryUsage,
   ): Promise<Category[]> {
     usageValue(usage);
+    // An impossible type keeps the access sentinel for transfer options.
     const type =
-      usage === 'transfer' ? null : usage === 'income' ? 'income' : 'expense';
-    const [, result] = await this.access.batch(
-      identity,
-      householdId,
-      'member',
-      [
-        this.db
-          .prepare(
-            `SELECT ${columns} FROM categories WHERE household_id=? AND status='active' AND type=? ORDER BY name,id`,
-          )
-          .bind(householdId, type),
-      ],
-    );
-    return result.results as unknown as Category[];
+      usage === 'transfer'
+        ? 'transfer'
+        : usage === 'income'
+          ? 'income'
+          : 'expense';
+    return this.read(identity, householdId, 'active', type, null);
   }
   async options(identity: Identity, householdId: string, query: unknown) {
     const q = validateRequest(CategoryOptionsQueryDto, query);
@@ -132,7 +152,7 @@ export class CategoryService {
     };
   }
   async referenceNames(identity: Identity, householdId: string) {
-    await this.access.batch(identity, householdId, 'member', []);
+    await this.access.get(identity, householdId);
     return {
       expense: ['Groceries', 'Utilities', 'Transport'],
       income: ['Salary', 'Other income'],
@@ -143,19 +163,9 @@ export class CategoryService {
     householdId: string,
     id: string,
   ): Promise<Category> {
-    const [, result] = await this.access.batch(
-      identity,
-      householdId,
-      'member',
-      [
-        this.db
-          .prepare(
-            `SELECT ${columns} FROM categories WHERE household_id=? AND id=?`,
-          )
-          .bind(householdId, id),
-      ],
-    );
-    const category = result.results[0] as unknown as Category | undefined;
+    const category = (
+      await this.read(identity, householdId, 'all', null, id)
+    )[0];
     if (!category) throw notFound();
     return category;
   }

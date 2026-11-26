@@ -1,18 +1,11 @@
 import { MonthlyReportQueryDto } from './reports.dto.js';
 import { validateRequest } from '../validation/request-dto.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
-import {
-  Controller,
-  Get,
-  Inject,
-  Injectable,
-  Param,
-  Query,
-} from '@nestjs/common';
-import { apiError } from '../auth/auth.errors.js';
+import { Controller, Get, Injectable, Param, Query } from '@nestjs/common';
+import { apiError, unavailable } from '../auth/auth.errors.js';
 import type { Identity } from '../auth/auth.types.js';
-import { DATABASE } from '../database/database.tokens.js';
-import type { Database } from '../database/database.types.js';
+import { PrismaService } from '../database/prisma.service.js';
+import { Prisma } from '../generated/prisma/client.js';
 import {
   householdMonthForInstant,
   monthDateRange,
@@ -188,38 +181,56 @@ export function summarizeBalances(rows: BalanceRow[]) {
 @Injectable()
 export class ReportsService {
   constructor(
-    @Inject(DATABASE) private readonly db: Database,
     private readonly access: HouseholdAccessService,
+    private readonly prisma: PrismaService,
   ) {}
-  private stmt(sql: string, ...v: (string | number | null)[]) {
-    return this.db.prepare(sql).bind(...v);
-  }
   private report(h: string, m: string) {
     const { startDate, endDate } = monthDateRange(m);
-    return this.stmt(
-      `SELECT t.id,t.type,t.category_id AS categoryId,c.name AS categoryName,CASE WHEN t.type='refund' THEN COALESCE(NULLIF(t.merchant,''),purchase.merchant) ELSE t.merchant END AS merchant,v.movement_id AS movementId,v.currency,CAST(v.amount_minor AS TEXT) AS amountMinor,CAST(v.rsd_equivalent_minor AS TEXT) AS rsdEquivalentMinor,am.exchange_rate AS exchangeRate FROM transactions t LEFT JOIN categories c ON c.household_id=t.household_id AND c.id=t.category_id LEFT JOIN transactions purchase ON purchase.household_id=t.household_id AND purchase.id=t.parent_transaction_id LEFT JOIN transaction_reporting_movements v ON v.household_id=t.household_id AND v.transaction_id=t.id LEFT JOIN account_movements am ON am.household_id=v.household_id AND am.id=v.movement_id WHERE t.household_id=? AND t.status='posted' AND t.transaction_date>=? AND t.transaction_date<=? ORDER BY t.id,v.movement_id`,
-      h,
-      startDate,
-      endDate,
-    );
+    return Prisma.sql`SELECT t.id,t.type,t.category_id AS categoryId,c.name AS categoryName,CASE WHEN t.type='refund' THEN COALESCE(NULLIF(t.merchant,''),purchase.merchant) ELSE t.merchant END AS merchant,v.movement_id AS movementId,v.currency,CAST(v.amount_minor AS TEXT) AS amountMinor,CAST(v.rsd_equivalent_minor AS TEXT) AS rsdEquivalentMinor,am.exchange_rate AS exchangeRate FROM transactions t LEFT JOIN categories c ON c.household_id=t.household_id AND c.id=t.category_id LEFT JOIN transactions purchase ON purchase.household_id=t.household_id AND purchase.id=t.parent_transaction_id LEFT JOIN transaction_reporting_movements v ON v.household_id=t.household_id AND v.transaction_id=t.id LEFT JOIN account_movements am ON am.household_id=v.household_id AND am.id=v.movement_id WHERE t.household_id=${h} AND t.status='posted' AND t.transaction_date>=${startDate} AND t.transaction_date<=${endDate} ORDER BY t.id,v.movement_id`;
   }
   private balances(h: string, end: string | null) {
-    return this.stmt(
-      `SELECT a.currency,'balance' AS kind,CAST(m.amount_minor AS TEXT) AS amountMinor FROM accounts a JOIN account_movements m ON m.household_id=a.household_id AND m.account_id=a.id WHERE a.household_id=? AND (? IS NULL OR m.movement_date<=?) UNION ALL SELECT a.currency,'reserve' AS kind,CAST(r.amount_minor AS TEXT) AS amountMinor FROM accounts a JOIN reserve_movements r ON r.household_id=a.household_id AND r.account_id=a.id WHERE a.household_id=? AND (? IS NULL OR r.movement_date<=?) UNION ALL SELECT currency,'balance','0' FROM accounts WHERE household_id=?`,
-      h,
-      end,
-      end,
-      h,
-      end,
-      end,
-      h,
-    );
+    return Prisma.sql`SELECT a.currency,'balance' AS kind,CAST(m.amount_minor AS TEXT) AS amountMinor FROM accounts a JOIN account_movements m ON m.household_id=a.household_id AND m.account_id=a.id WHERE a.household_id=${h} AND (${end} IS NULL OR m.movement_date<=${end}) UNION ALL SELECT a.currency,'reserve' AS kind,CAST(r.amount_minor AS TEXT) AS amountMinor FROM accounts a JOIN reserve_movements r ON r.household_id=a.household_id AND r.account_id=a.id WHERE a.household_id=${h} AND (${end} IS NULL OR r.movement_date<=${end}) UNION ALL SELECT currency,'balance','0' FROM accounts WHERE household_id=${h}`;
   }
   private recent(h: string) {
-    return this.stmt(
-      `SELECT t.id,t.transaction_date AS transactionDate,t.type,t.merchant,c.name AS categoryName,CAST(COALESCE(d.amount_minor,td.debit_amount_minor,abs(am.amount_minor)) AS TEXT) AS amountMinor,COALESCE(d.currency,td.debit_currency,am.currency) AS currency,COALESCE(a.name,src.name,ma.name) AS accountName,dst.name AS toAccountName,CAST(td.credit_amount_minor AS TEXT) AS creditAmountMinor,td.credit_currency AS creditCurrency FROM transactions t LEFT JOIN categories c ON c.household_id=t.household_id AND c.id=t.category_id LEFT JOIN posting_details d ON d.household_id=t.household_id AND d.transaction_id=t.id LEFT JOIN transfer_details td ON td.household_id=t.household_id AND td.transaction_id=t.id LEFT JOIN accounts a ON a.household_id=t.household_id AND a.id=d.account_id LEFT JOIN accounts src ON src.household_id=t.household_id AND src.id=td.from_account_id LEFT JOIN accounts dst ON dst.household_id=t.household_id AND dst.id=td.to_account_id LEFT JOIN account_movements am ON am.household_id=t.household_id AND am.id=(SELECT id FROM account_movements WHERE household_id=t.household_id AND transaction_id=t.id ORDER BY id LIMIT 1) LEFT JOIN accounts ma ON ma.household_id=t.household_id AND ma.id=am.account_id WHERE t.household_id=? AND t.status='posted' ORDER BY t.transaction_date DESC,t.id DESC LIMIT 15`,
-      h,
-    );
+    return Prisma.sql`SELECT t.id,t.transaction_date AS transactionDate,t.type,t.merchant,c.name AS categoryName,CAST(COALESCE(d.amount_minor,td.debit_amount_minor,abs(am.amount_minor)) AS TEXT) AS amountMinor,COALESCE(d.currency,td.debit_currency,am.currency) AS currency,COALESCE(a.name,src.name,ma.name) AS accountName,dst.name AS toAccountName,CAST(td.credit_amount_minor AS TEXT) AS creditAmountMinor,td.credit_currency AS creditCurrency FROM transactions t LEFT JOIN categories c ON c.household_id=t.household_id AND c.id=t.category_id LEFT JOIN posting_details d ON d.household_id=t.household_id AND d.transaction_id=t.id LEFT JOIN transfer_details td ON td.household_id=t.household_id AND td.transaction_id=t.id LEFT JOIN accounts a ON a.household_id=t.household_id AND a.id=d.account_id LEFT JOIN accounts src ON src.household_id=t.household_id AND src.id=td.from_account_id LEFT JOIN accounts dst ON dst.household_id=t.household_id AND dst.id=td.to_account_id LEFT JOIN account_movements am ON am.household_id=t.household_id AND am.id=(SELECT id FROM account_movements WHERE household_id=t.household_id AND transaction_id=t.id ORDER BY id LIMIT 1) LEFT JOIN accounts ma ON ma.household_id=t.household_id AND ma.id=am.account_id WHERE t.household_id=${h} AND t.status='posted' ORDER BY t.transaction_date DESC,t.id DESC LIMIT 15`;
+  }
+  private async snapshot(
+    i: Identity,
+    h: string,
+    m: string,
+    end: string | null,
+    includeRecent: boolean,
+  ) {
+    type Tagged = { section: string; payload: string | null };
+    let rows: Tagged[];
+    try {
+      rows = await this.prisma.$queryRaw(Prisma.sql`
+        WITH authorized AS (SELECT h.id FROM households h JOIN household_members member ON member.household_id=h.id AND member.identity_subject=${i.subject} AND member.status='active' WHERE h.id=${h} AND h.status='active'),
+        report_rows AS (${this.report(h, m)}), balance_rows AS (${this.balances(h, end)}), recent_rows AS (${this.recent(h)})
+        SELECT 'access' AS section,NULL AS payload,NULL AS ordinal FROM authorized
+        UNION ALL SELECT 'report',json_object('id',r.id,'type',r.type,'categoryId',r.categoryId,'categoryName',r.categoryName,'merchant',r.merchant,'movementId',r.movementId,'currency',r.currency,'amountMinor',r.amountMinor,'rsdEquivalentMinor',r.rsdEquivalentMinor,'exchangeRate',r.exchangeRate),row_number() OVER (ORDER BY r.id,r.movementId) FROM report_rows r WHERE EXISTS(SELECT 1 FROM authorized)
+        UNION ALL SELECT 'balance',json_object('currency',b.currency,'kind',b.kind,'amountMinor',b.amountMinor),NULL FROM balance_rows b WHERE EXISTS(SELECT 1 FROM authorized)
+        ${includeRecent ? Prisma.sql`UNION ALL SELECT 'recent',json_object('id',r.id,'transactionDate',r.transactionDate,'type',r.type,'merchant',r.merchant,'categoryName',r.categoryName,'amountMinor',r.amountMinor,'currency',r.currency,'accountName',r.accountName,'toAccountName',r.toAccountName,'creditAmountMinor',r.creditAmountMinor,'creditCurrency',r.creditCurrency),row_number() OVER (ORDER BY r.transactionDate DESC,r.id DESC) FROM recent_rows r WHERE EXISTS(SELECT 1 FROM authorized)` : Prisma.empty}
+        ORDER BY section,ordinal
+      `);
+    } catch {
+      throw unavailable();
+    }
+    if (!rows.some((row) => row.section === 'access'))
+      throw apiError(404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
+    const report: ReportRow[] = [],
+      balances: BalanceRow[] = [],
+      recent: RecentRow[] = [];
+    for (const row of rows) {
+      if (row.payload === null) continue;
+      if (row.section === 'report')
+        report.push(JSON.parse(row.payload) as ReportRow);
+      if (row.section === 'balance')
+        balances.push(JSON.parse(row.payload) as BalanceRow);
+      if (row.section === 'recent')
+        recent.push(JSON.parse(row.payload) as RecentRow);
+    }
+    return { report, balances, recent };
   }
   async monthly(i: Identity, h: string, query: unknown) {
     const q = validateRequest(MonthlyReportQueryDto, query);
@@ -241,18 +252,17 @@ export class ReportsService {
       new Date().toISOString(),
       household.timeZone,
     );
-    const [, records, balances] = await this.access.batch(i, h, 'member', [
-      this.report(h, m),
-      this.balances(h, monthDateRange(m).endDate),
-    ]);
+    const snapshot = await this.snapshot(
+      i,
+      h,
+      m,
+      monthDateRange(m).endDate,
+      false,
+    );
     return {
       month: m,
-      ...summarizeReport(
-        records.results as unknown as ReportRow[],
-        category,
-        merchant,
-      ),
-      balances: summarizeBalances(balances.results as unknown as BalanceRow[]),
+      ...summarizeReport(snapshot.report, category, merchant),
+      balances: summarizeBalances(snapshot.balances),
     };
   }
   async dashboard(i: Identity, h: string) {
@@ -261,35 +271,28 @@ export class ReportsService {
         new Date().toISOString(),
         household.timeZone,
       );
-    const [, records, balances, recent] = await this.access.batch(
-      i,
-      h,
-      'member',
-      [this.report(h, month), this.balances(h, null), this.recent(h)],
-    );
+    const snapshot = await this.snapshot(i, h, month, null, true);
     return {
       month,
-      totals: summarizeReport(records.results as unknown as ReportRow[]).totals,
-      balances: summarizeBalances(balances.results as unknown as BalanceRow[]),
-      recentTransactions: (recent.results as unknown as RecentRow[]).map(
-        (r) => ({
-          id: r.id,
-          transactionDate: r.transactionDate,
-          type: r.type,
-          merchant: r.merchant,
-          categoryName: r.categoryName,
-          amountMinor: r.amountMinor,
-          currency: r.currency,
-          accountName: r.accountName,
-          ...(r.type === 'transfer'
-            ? {
-                toAccountName: r.toAccountName,
-                creditAmountMinor: r.creditAmountMinor,
-                creditCurrency: r.creditCurrency,
-              }
-            : {}),
-        }),
-      ),
+      totals: summarizeReport(snapshot.report).totals,
+      balances: summarizeBalances(snapshot.balances),
+      recentTransactions: snapshot.recent.map((r) => ({
+        id: r.id,
+        transactionDate: r.transactionDate,
+        type: r.type,
+        merchant: r.merchant,
+        categoryName: r.categoryName,
+        amountMinor: r.amountMinor,
+        currency: r.currency,
+        accountName: r.accountName,
+        ...(r.type === 'transfer'
+          ? {
+              toAccountName: r.toAccountName,
+              creditAmountMinor: r.creditAmountMinor,
+              creditCurrency: r.creditCurrency,
+            }
+          : {}),
+      })),
     };
   }
 }

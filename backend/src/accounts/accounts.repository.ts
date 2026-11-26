@@ -2,6 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { apiError, unavailable } from '../auth/auth.errors.js';
 import type { Identity } from '../auth/auth.types.js';
 import { DATABASE } from '../database/database.tokens.js';
+import { PrismaService } from '../database/prisma.service.js';
+import { Prisma } from '../generated/prisma/client.js';
 import type { Database } from '../database/database.types.js';
 import type {
   Account,
@@ -10,9 +12,10 @@ import type {
   MovementPage,
 } from './accounts.types.js';
 
-const select = `SELECT a.id,a.name,a.type,a.currency,a.owner_member_id AS ownerMemberId,a.designation,a.bank_name AS bankName,a.card_last_four AS cardLastFour,a.status,a.version,a.currency_locked AS currencyLocked,a.created_at AS createdAt,a.updated_at AS updatedAt,
+const selection = `SELECT a.id,a.name,a.type,a.currency,a.owner_member_id AS ownerMemberId,a.designation,a.bank_name AS bankName,a.card_last_four AS cardLastFour,a.status,a.version,a.currency_locked AS currencyLocked,a.created_at AS createdAt,a.updated_at AS updatedAt,
  CAST((SELECT COALESCE(SUM(amount_minor),0) FROM account_movements WHERE household_id=a.household_id AND account_id=a.id) AS TEXT) AS balanceMinor,
- CAST((SELECT COALESCE(SUM(amount_minor),0) FROM reserve_movements WHERE household_id=a.household_id AND account_id=a.id) AS TEXT) AS reservedMinor FROM accounts a`;
+ CAST((SELECT COALESCE(SUM(amount_minor),0) FROM reserve_movements WHERE household_id=a.household_id AND account_id=a.id) AS TEXT) AS reservedMinor`;
+const select = `${selection} FROM accounts a`;
 function translate(e: unknown): never {
   const errors: [string, number, string, string][] = [
     [
@@ -60,7 +63,10 @@ function translate(e: unknown): never {
 }
 @Injectable()
 export class AccountsRepository {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly prisma: PrismaService,
+  ) {}
   private stmt(
     sql: string,
     ...values: (string | number | null)[]
@@ -142,6 +148,7 @@ export class AccountsRepository {
     return {
       ...a,
       currencyLocked: Boolean(a.currencyLocked),
+      version: Number(a.version),
       availableMinor: (
         BigInt(a.balanceMinor) - BigInt(a.reservedMinor)
       ).toString(),
@@ -152,34 +159,53 @@ export class AccountsRepository {
     if (!row) throw unavailable();
     return this.account(row);
   }
+  private async scopedAccounts(
+    identity: Identity,
+    householdId: string,
+    status: string,
+    id: string | null,
+  ): Promise<Account[]> {
+    try {
+      const rows = await this.prisma.$queryRaw<
+        (Account | { id: null })[]
+      >(Prisma.sql`
+        ${Prisma.raw(selection)}
+        FROM households h JOIN household_members member ON member.household_id=h.id
+          AND member.identity_subject=${identity.subject} AND member.status='active'
+        LEFT JOIN accounts a ON a.household_id=h.id AND (${status}='all' OR a.status=${status}) AND (${id} IS NULL OR a.id=${id})
+        WHERE h.id=${householdId} AND h.status='active' ORDER BY a.name COLLATE NOCASE,a.id`);
+      if (!rows.length)
+        throw apiError(404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
+      return rows
+        .filter((row) => row.id !== null)
+        .map((row) => this.account(row));
+    } catch (e) {
+      if (e instanceof Error && 'getStatus' in e) throw e;
+      return translate(e);
+    }
+  }
   async list(
     identity: Identity,
     householdId: string,
     status: 'all' | 'active' | 'archived',
   ): Promise<{ accounts: Account[] }> {
-    const r = await this.batch([
-      this.access(identity, householdId),
-      this.stmt(
-        `${select} WHERE a.household_id=? AND (?='all' OR a.status=?) ORDER BY a.name COLLATE NOCASE,a.id`,
-        householdId,
-        status,
-        status,
-      ),
-    ]);
-    return { accounts: (r[1].results ?? []).map((x) => this.account(x)) };
+    return {
+      accounts: await this.scopedAccounts(identity, householdId, status, null),
+    };
   }
   async get(
     identity: Identity,
     householdId: string,
     id: string,
   ): Promise<Account> {
-    const r = await this.batch([
-      this.access(identity, householdId),
-      this.read(householdId, id),
-    ]);
-    const row = r[1].results?.[0];
-    if (!row) throw apiError(404, 'ACCOUNT_NOT_FOUND', 'Account not found');
-    return this.account(row);
+    const [account] = await this.scopedAccounts(
+      identity,
+      householdId,
+      'all',
+      id,
+    );
+    if (!account) throw apiError(404, 'ACCOUNT_NOT_FOUND', 'Account not found');
+    return account;
   }
   async create(
     identity: Identity,
@@ -359,23 +385,31 @@ export class AccountsRepository {
     },
   ): Promise<MovementPage> {
     const c = options.cursor;
-    const r = await this.batch([
-      this.access(identity, householdId),
-      this.read(householdId, id),
-      this.stmt(
-        `SELECT id,type,movement_date AS movementDate,CAST(amount_minor AS TEXT) AS amountMinor,currency,transaction_id AS transactionId,created_at AS createdAt FROM account_movements WHERE household_id=? AND account_id=? AND (? IS NULL OR movement_date<? OR (movement_date=? AND id<?)) ORDER BY movement_date DESC,id DESC LIMIT ?`,
-        householdId,
-        id,
-        c?.movementDate ?? null,
-        c?.movementDate ?? null,
-        c?.movementDate ?? null,
-        c?.id ?? null,
-        options.limit + 1,
-      ),
-    ]);
-    if (!r[1].results?.length)
+    let result: ({ accountFound: string | null } & Partial<AccountMovement>)[];
+    try {
+      result = await this.prisma.$queryRaw(Prisma.sql`
+        SELECT a.id AS accountFound,m.id,m.type,m.movementDate,m.amountMinor,m.currency,m.transactionId,m.createdAt
+        FROM households h JOIN household_members member ON member.household_id=h.id
+          AND member.identity_subject=${identity.subject} AND member.status='active'
+        LEFT JOIN accounts a ON a.household_id=h.id AND a.id=${id}
+        LEFT JOIN (
+          SELECT id,type,movement_date AS movementDate,CAST(amount_minor AS TEXT) AS amountMinor,currency,transaction_id AS transactionId,created_at AS createdAt
+          FROM account_movements WHERE household_id=${householdId} AND account_id=${id}
+          AND (${c?.movementDate ?? null} IS NULL OR movement_date<${c?.movementDate ?? null} OR (movement_date=${c?.movementDate ?? null} AND id<${c?.id ?? null}))
+          ORDER BY movement_date DESC,id DESC LIMIT ${options.limit + 1}
+        ) m ON a.id IS NOT NULL
+        WHERE h.id=${householdId} AND h.status='active'
+        ORDER BY m.movementDate DESC,m.id DESC`);
+    } catch (e) {
+      return translate(e);
+    }
+    if (!result.length)
+      throw apiError(404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
+    if (!result[0].accountFound)
       throw apiError(404, 'ACCOUNT_NOT_FOUND', 'Account not found');
-    const rows = r[2].results as unknown as AccountMovement[];
+    const rows = result
+      .filter((row) => row.id !== null)
+      .map(({ accountFound: _accountFound, ...row }) => row as AccountMovement);
     const movements = rows.slice(0, options.limit),
       last = movements.at(-1);
     const nextCursor =

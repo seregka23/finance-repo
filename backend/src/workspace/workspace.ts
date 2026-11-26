@@ -1,11 +1,9 @@
-import { Controller, Get, Inject, Injectable, Param } from '@nestjs/common';
+import { Controller, Get, Injectable, Param } from '@nestjs/common';
 import type { Identity } from '../auth/auth.js';
 import { CurrentIdentity } from '../auth/current-identity.decorator.js';
-import { DATABASE } from '../health.controller.js';
-import {
-  HouseholdAccessService,
-  type Database,
-} from '../households/households.js';
+import { PrismaService } from '../database/prisma.service.js';
+import { Prisma } from '../generated/prisma/client.js';
+import { dbError, notFound } from '../households/households.errors.js';
 
 interface WorkspaceCounts {
   accounts: number;
@@ -17,37 +15,35 @@ interface WorkspaceCounts {
 
 @Injectable()
 export class WorkspaceService {
-  constructor(
-    @Inject(DATABASE) private readonly db: Database,
-    private readonly access: HouseholdAccessService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async get(identity: Identity, householdId: string) {
-    const [, result] = await this.access.batch(
-      identity,
-      householdId,
-      'member',
-      [
-        this.db
-          .prepare(
-            `SELECT
-        (SELECT COUNT(*) FROM accounts WHERE household_id=?) AS accounts,
-        (SELECT COUNT(*) FROM transactions WHERE household_id=?) AS transactions,
-        (SELECT COUNT(*) FROM monthly_plans WHERE household_id=?) AS plans,
-        (SELECT COUNT(*) FROM reserves WHERE household_id=?) AS reserves,
-        (SELECT COUNT(*) FROM account_movements WHERE household_id=?) AS accountMovements`,
-          )
-          .bind(
-            householdId,
-            householdId,
-            householdId,
-            householdId,
-            householdId,
-          ),
-      ],
-    );
+    let counts: WorkspaceCounts;
+    try {
+      const rows = await this.prisma.$queryRaw<WorkspaceCounts[]>(Prisma.sql`
+        SELECT (SELECT COUNT(*) FROM accounts WHERE household_id=h.id) AS accounts,
+          (SELECT COUNT(*) FROM transactions WHERE household_id=h.id) AS transactions,
+          (SELECT COUNT(*) FROM monthly_plans WHERE household_id=h.id) AS plans,
+          (SELECT COUNT(*) FROM reserves WHERE household_id=h.id) AS reserves,
+          (SELECT COUNT(*) FROM account_movements WHERE household_id=h.id) AS accountMovements
+        FROM households h JOIN household_members m ON m.household_id=h.id
+          AND m.identity_subject=${identity.subject} AND m.status='active'
+        WHERE h.id=${householdId} AND h.status='active'`);
+      if (!rows.length) throw notFound();
+      const row = rows[0];
+      counts = {
+        accounts: Number(row.accounts),
+        transactions: Number(row.transactions),
+        plans: Number(row.plans),
+        reserves: Number(row.reserves),
+        accountMovements: Number(row.accountMovements),
+      };
+    } catch (e) {
+      if (e instanceof Error && 'getStatus' in e) throw e;
+      return dbError(e);
+    }
     return {
-      counts: result.results[0] as WorkspaceCounts,
+      counts,
       capabilities: {
         accounts: true,
         transactions: true,

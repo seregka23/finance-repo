@@ -71,4 +71,41 @@ describe('household access reads', () => {
       }),
     );
   });
+  it('reads members and unexpired invitations in one authorized statement', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValue([
+        {
+          members:
+            '[{"id":"m","email":null,"role":"member","status":"active"}]',
+          invitations:
+            '[{"id":"i","email":"a@example.com","status":"pending","expiresAt":100}]',
+        },
+      ]);
+    const service = new HouseholdsService(
+      {} as Database,
+      {} as HouseholdAccessService,
+      { $queryRaw: query } as unknown as PrismaService,
+    );
+    await expect(service.members(identity, 'home')).resolves.toEqual({
+      members: [{ id: 'm', email: null, role: 'member', status: 'active' }],
+      invitations: [
+        {
+          id: 'i',
+          email: 'a@example.com',
+          status: 'pending',
+          expiresAt: '1970-01-01T00:01:40.000Z',
+        },
+      ],
+    });
+    const sql = query.mock.calls[0][0] as { sql: string; values: unknown[] };
+    expect(sql.sql).toContain(
+      "requester.identity_subject=? AND requester.status='active'",
+    );
+    expect(sql.values).toEqual(['subject', 'home']);
+    query.mockResolvedValueOnce([]);
+    await expect(service.members(identity, 'home')).rejects.toMatchObject({
+      status: 404,
+    });
+  });
 });

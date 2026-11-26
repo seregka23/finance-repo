@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Database } from '../households/households.js';
-import type { HouseholdAccessService } from '../households/households.js';
+import type { PrismaService } from '../database/prisma.service.js';
 import { MonetaryRepository } from './monetary-repository.js';
 
 const identity = { subject: 'subject', email: 'member@example.com' };
 describe('recorded movement repository', () => {
-  it('authorizes and scopes the month read by movement date and preserves recorded values', async () => {
+  it('scopes the read to live membership and preserves exact recorded values', async () => {
     const record = {
       id: 'x',
       movementDate: '2024-02-29',
@@ -15,13 +14,10 @@ describe('recorded movement repository', () => {
       exchangeRate: '117.000',
       exchangeRateSource: 'old',
     };
-    const statement = { bind: vi.fn().mockReturnThis() };
-    const prepare = vi.fn().mockReturnValue(statement);
-    const batch = vi.fn().mockResolvedValue([{}, { results: [record] }]);
-    const repository = new MonetaryRepository(
-      { prepare } as unknown as Database,
-      { batch } as unknown as HouseholdAccessService,
-    );
+    const query = vi.fn().mockResolvedValue([record]);
+    const repository = new MonetaryRepository({
+      $queryRaw: query,
+    } as unknown as PrismaService);
     const result = await repository.readRecordedMonth(
       identity,
       'household-1',
@@ -32,36 +28,33 @@ describe('recorded movement repository', () => {
       incompleteConversion: true,
       missingConversionCount: 1,
     });
-    expect(prepare.mock.calls[0][0]).toMatch(/CAST\(amount_minor AS TEXT\)/);
-    expect(prepare.mock.calls[0][0]).toMatch(
-      /CAST\(rsd_equivalent_minor AS TEXT\)/,
-    );
-    expect(prepare.mock.calls[0][0]).toMatch(
-      /WHERE household_id=\? AND movement_date>=\? AND movement_date<=\?/,
-    );
-    expect(statement.bind).toHaveBeenCalledWith(
-      'household-1',
+    const sql = query.mock.calls[0][0] as { sql: string; values: unknown[] };
+    expect(sql.sql).toContain("member.status='active'");
+    expect(sql.sql).toContain('CAST(m.amount_minor AS TEXT)');
+    expect(sql.values).toEqual([
+      'subject',
       '2024-02-01',
       '2024-02-29',
-    );
-    expect(batch).toHaveBeenCalledWith(identity, 'household-1', 'member', [
-      statement,
+      'household-1',
     ]);
   });
-  it('propagates denied access and rejects invalid months before a read', async () => {
-    const error = new Error('denied');
-    const prepare = vi.fn().mockReturnValue({ bind: vi.fn().mockReturnThis() });
-    const batch = vi.fn().mockRejectedValue(error);
-    const repository = new MonetaryRepository(
-      { prepare } as unknown as Database,
-      { batch } as unknown as HouseholdAccessService,
-    );
+  it('distinguishes authorized empty results from missing membership', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: null }])
+      .mockResolvedValueOnce([]);
+    const repository = new MonetaryRepository({
+      $queryRaw: query,
+    } as unknown as PrismaService);
+    expect(
+      (await repository.readRecordedMonth(identity, 'h', '2024-02')).records,
+    ).toEqual([]);
     await expect(
       repository.readRecordedMonth(identity, 'h', '2024-02'),
-    ).rejects.toBe(error);
+    ).rejects.toMatchObject({ status: 404 });
     await expect(
       repository.readRecordedMonth(identity, 'h', '2024-13'),
     ).rejects.toThrow();
-    expect(batch).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledTimes(2);
   });
 });

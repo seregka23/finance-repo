@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Identity } from '../auth/auth.types.js';
 import type { Database } from '../database/database.types.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { DATABASE } from '../database/database.tokens.js';
 import { HouseholdAccessService } from './household-access.service.js';
 import {
@@ -111,36 +112,29 @@ export class HouseholdsService {
     return { ...current, name: n, timeZone: tz };
   }
   async members(identity: Identity, id: string) {
-    await this.access.get(identity, id);
     try {
-      const [, members, invitations] = await this.access.batch(
-        identity,
-        id,
-        'member',
-        [
-          this.db
-            .prepare(
-              "SELECT id,email,role,status FROM household_members WHERE household_id=? AND status='active' ORDER BY created_at,id",
-            )
-            .bind(id),
-          this.db
-            .prepare(
-              "SELECT id,email,status,expires_at AS expiresAt FROM household_invitations WHERE household_id=? AND status='pending' AND expires_at > unixepoch() ORDER BY created_at,id",
-            )
-            .bind(id),
-        ],
-      );
-      return {
-        members: members.results,
-        invitations: invitations.results.map((row) => {
-          const invitation = row as { expiresAt: number };
-          return {
-            ...invitation,
-            expiresAt: new Date(invitation.expiresAt * 1000).toISOString(),
-          };
-        }),
-      };
+      const rows = await this.prisma.$queryRaw<
+        { members: string; invitations: string }[]
+      >(Prisma.sql`
+        SELECT
+          (SELECT json_group_array(json_object('id',id,'email',email,'role',role,'status',status)) FROM
+            (SELECT id,email,role,status FROM household_members WHERE household_id=h.id AND status='active' ORDER BY created_at,id)) AS members,
+          (SELECT json_group_array(json_object('id',id,'email',email,'status',status,'expiresAt',expires_at)) FROM
+            (SELECT id,email,status,expires_at FROM household_invitations WHERE household_id=h.id AND status='pending' AND expires_at>unixepoch() ORDER BY created_at,id)) AS invitations
+        FROM households h JOIN household_members requester ON requester.household_id=h.id
+          AND requester.identity_subject=${identity.subject} AND requester.status='active'
+        WHERE h.id=${id} AND h.status='active'`);
+      if (!rows.length) throw notFound();
+      const members = JSON.parse(rows[0].members) as unknown[];
+      const invitations = (
+        JSON.parse(rows[0].invitations) as { expiresAt: number }[]
+      ).map((invitation) => ({
+        ...invitation,
+        expiresAt: new Date(invitation.expiresAt * 1000).toISOString(),
+      }));
+      return { members, invitations };
     } catch (e) {
+      if (e instanceof Error && 'getStatus' in e) throw e;
       return dbError(e);
     }
   }

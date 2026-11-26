@@ -12,7 +12,15 @@ active household/member lookups and session household lists. The local
 infrastructure probe uses Prisma create/find/delete operations, and the health
 route checks the database through Prisma. HTTP response shapes are unchanged.
 
-The schema maps all 19 application tables and their scalar columns. It includes
+Category lists and details, workspace counts, member and invitation lists,
+account balances and movements, monthly plans, monthly reports, the dashboard,
+and recorded monthly movements use parameterized `PrismaService.$queryRaw`
+calls. Each query checks live household membership in the same statement that
+returns the data. The queries distinguish an authorized empty collection from a
+denied request. The member and invitation lists share a database snapshot, as
+do the financial rows used to assemble each report and dashboard response.
+
+The schema maps application tables and their scalar columns. It includes
 the relations used by current typed queries, maps snake_case storage names to
 camelCase fields, uses `BigInt` for minor-unit amounts and preserves stored text
 for financial dates, rates and audit timestamps. API money remains string
@@ -25,16 +33,15 @@ Prisma's D1 adapter does not provide atomic transaction semantics. Therefore:
   they can also request implicit transactions that D1's adapter cannot provide.
 - Registration's user/session write, throttle reservations, household creation,
   invitation acceptance and guarded updates retain their native D1 batches.
-- Category, workspace and monetary queries retain same-batch live authorization
-  assertions. Splitting these checks and queries would change isolation and
-  rollback guarantees.
-- Monetary repository reads retain integer-to-text casts and BigInt accumulation
-  to preserve exact values beyond JS-safe and SQLite SUM aggregate ranges.
+- Category mutations retain native D1 authorization assertions in the write
+  batch. Keep any required live authorization, write-result and accounting
+  assertions in the same batch as their dependent writes. This includes reads
+  used to validate a mutation or construct its result before the batch commits.
+- Financial reads retain integer-to-text casts and BigInt accumulation to
+  preserve exact values beyond JS-safe and SQLite SUM aggregate ranges.
 
-These native operations are deliberate parts of the database layer. This is a
-hybrid Prisma/D1 migration, not a claim that every SQL statement became an ORM
-call. The shared `DATABASE` token lives in `database/database.tokens.ts` and is
-re-exported by the health module for existing batch consumers.
+The shared `DATABASE` token lives in `database/database.tokens.ts` and is
+re-exported by the health module for services that use native atomic batches.
 
 ## Build and local development
 

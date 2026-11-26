@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CategoryService } from './categories.js';
+import type { PrismaService } from '../database/prisma.service.js';
 import type { Database } from '../households/households.js';
 import type { HouseholdAccessService } from '../households/households.js';
 
@@ -23,11 +24,13 @@ function setup(rows: unknown[] = []) {
     return statement;
   });
   const batch = vi.fn().mockResolvedValue([{}, { results: rows }]);
+  const queryRaw = vi.fn().mockResolvedValue([{ id: null }]);
   const service = new CategoryService(
     { prepare } as unknown as Database,
     { batch } as unknown as HouseholdAccessService,
+    { $queryRaw: queryRaw } as unknown as PrismaService,
   );
-  return { service, statements, batch };
+  return { service, statements, batch, queryRaw };
 }
 
 describe('categories', () => {
@@ -81,28 +84,46 @@ describe('categories', () => {
     }
     expect(batch).not.toHaveBeenCalled();
   });
-  it('filters eligible options by active status, type and household, and makes transfer empty', async () => {
-    const { service, statements } = setup();
+  it('scopes options and distinguishes denied access from an authorized empty list', async () => {
+    const { service, queryRaw } = setup();
     for (const [usage, type] of [
       ['fee', 'expense'],
       ['refund', 'expense'],
       ['budget', 'expense'],
       ['income', 'income'],
-      ['transfer', null],
+      ['transfer', 'transfer'],
     ] as const) {
-      await service.options(identity, 'h1', { usage });
-      const statement = statements.at(-1)!;
-      expect(statement.sql).toContain(
-        "household_id=? AND status='active' AND type=?",
+      await expect(service.options(identity, 'h1', { usage })).resolves.toEqual(
+        { usage, categories: [] },
       );
-      expect(statement.values).toEqual(['h1', type]);
+      const sql = queryRaw.mock.calls.at(-1)![0] as {
+        sql: string;
+        values: unknown[];
+      };
+      expect(sql.sql).toContain("m.identity_subject=? AND m.status='active'");
+      expect(sql.values).toEqual([
+        identity.subject,
+        'active',
+        'active',
+        type,
+        type,
+        null,
+        null,
+        'h1',
+      ]);
     }
+    queryRaw.mockResolvedValueOnce([]);
+    await expect(service.list(identity, 'h1', {})).rejects.toMatchObject({
+      status: 404,
+      response: { error: { code: 'HOUSEHOLD_NOT_FOUND' } },
+    });
+    await expect(service.get(identity, 'h1', 'absent')).rejects.toMatchObject({
+      status: 404,
+      response: { error: { code: 'CATEGORY_NOT_FOUND' } },
+    });
     await expect(service.options(identity, 'h1', {})).rejects.toMatchObject({
       status: 400,
     });
-    await expect(
-      service.list(identity, 'h1', { status: 'bogus' }),
-    ).rejects.toMatchObject({ status: 400 });
   });
   it('provides a parameterized selection assertion for the same atomic batch as a future write', () => {
     const { service, statements } = setup();

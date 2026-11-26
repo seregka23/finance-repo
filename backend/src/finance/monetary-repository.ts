@@ -1,10 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { apiError, unavailable } from '../auth/auth.errors.js';
 import type { Identity } from '../auth/auth.js';
-import { DATABASE } from '../health.controller.js';
-import {
-  HouseholdAccessService,
-  type Database,
-} from '../households/households.js';
+import { PrismaService } from '../database/prisma.service.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { monthDateRange } from './calendar.js';
 import {
   summarizeRecordedMoney,
@@ -14,10 +12,7 @@ import {
 /** Reads raw account movements; this is not an income, expense, or net report. */
 @Injectable()
 export class MonetaryRepository {
-  constructor(
-    @Inject(DATABASE) private readonly db: Database,
-    private readonly access: HouseholdAccessService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async readRecordedMonth(
     identity: Identity,
@@ -25,27 +20,24 @@ export class MonetaryRepository {
     month: string,
   ) {
     const { startDate, endDate } = monthDateRange(month);
-    // Read amounts as text to retain full SQLite integer precision in D1.
-    // Keep the read in the same atomic batch as the live access assertion.
-    const [, result] = await this.access.batch(
-      identity,
-      householdId,
-      'member',
-      [
-        this.db
-          .prepare(
-            `SELECT id, movement_date AS movementDate,
-        CAST(amount_minor AS TEXT) AS amountMinor, currency,
-        CAST(rsd_equivalent_minor AS TEXT) AS rsdEquivalentMinor,
-        exchange_rate AS exchangeRate, exchange_rate_source AS exchangeRateSource
-        FROM account_movements
-        WHERE household_id=? AND movement_date>=? AND movement_date<=?
-        ORDER BY movement_date, id`,
-          )
-          .bind(householdId, startDate, endDate),
-      ],
+    let rows: (RecordedMoneyMovement | { id: null })[];
+    try {
+      rows = await this.prisma.$queryRaw(Prisma.sql`
+        SELECT m.id,m.movement_date AS movementDate,CAST(m.amount_minor AS TEXT) AS amountMinor,m.currency,
+          CAST(m.rsd_equivalent_minor AS TEXT) AS rsdEquivalentMinor,
+          m.exchange_rate AS exchangeRate,m.exchange_rate_source AS exchangeRateSource
+        FROM households h JOIN household_members member ON member.household_id=h.id
+          AND member.identity_subject=${identity.subject} AND member.status='active'
+        LEFT JOIN account_movements m ON m.household_id=h.id AND m.movement_date>=${startDate} AND m.movement_date<=${endDate}
+        WHERE h.id=${householdId} AND h.status='active' ORDER BY m.movement_date,m.id`);
+    } catch {
+      throw unavailable();
+    }
+    if (!rows.length)
+      throw apiError(404, 'HOUSEHOLD_NOT_FOUND', 'Household not found');
+    const records = rows.filter(
+      (row): row is RecordedMoneyMovement => row.id !== null,
     );
-    const records = result.results as unknown as RecordedMoneyMovement[];
     return { records, summary: summarizeRecordedMoney(records) };
   }
 }
