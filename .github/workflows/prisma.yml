@@ -41,6 +41,7 @@ jobs:
       - run: npm run verify:preview
       - run: npm run verify:prisma
       - run: node scripts/verify-schema.mjs
+      - run: npm run verify:historical-trial
       - run: npm --prefix frontend test -- --watch=false
       - run: npm --prefix backend test
       - run: npm --prefix backend run lint
