@@ -90,6 +90,7 @@
             <p>{{ api.session()!.user.email }}</p>
             <a routerLink="/settings">{{ i18n.t('Household settings') }}</a>
             <a routerLink="/categories">{{ i18n.t('Categories') }}</a>
+            <app-feedback />
             <button type="button" class="textbtn" (click)="logout()">
               {{ i18n.t('Sign out') }}
             </button>

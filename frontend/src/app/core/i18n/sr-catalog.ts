@@ -1,6 +1,24 @@
 import type { Message } from './ru-catalog';
 
 export const sr: Record<Message, string> = {
+  Feedback: 'Povratne informacije',
+  'Send feedback': 'Pošalji povratne informacije',
+  Title: 'Naslov',
+  Message: 'Poruka',
+  'Feedback sent.': 'Povratne informacije su poslate.',
+  'View issue #{number}': 'Pogledaj prijavu #{number}',
+  'Your title and message will be public on GitHub. Do not include private or sensitive information.':
+    'Naslov i poruka biće javni na GitHub-u. Ne unosite privatne ili osetljive podatke.',
+  'Enter a title of 5–100 characters and a message of 10–2000 characters.':
+    'Unesite naslov od 5 do 100 znakova i poruku od 10 do 2000 znakova.',
+  'Too many feedback submissions. Please wait and try again.':
+    'Previše poslatih prijava. Sačekajte i pokušajte ponovo.',
+  'Feedback is temporarily unavailable. Please try again later.':
+    'Povratne informacije trenutno nisu dostupne. Pokušajte kasnije.',
+  'Feedback may have been sent. Check GitHub before trying again.':
+    'Prijava je možda poslata. Proverite GitHub pre ponovnog pokušaja.',
+  'Sending…': 'Slanje…',
+
   'Review required': 'Potrebna je provera',
   'Transaction declined': 'Transakcija je odbijena',
   'Settlement pending': 'Poravnanje je na čekanju',

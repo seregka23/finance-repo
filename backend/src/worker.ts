@@ -45,6 +45,10 @@ function initialize(): Promise<INestApplication> {
               : ''
             : null,
       },
+      'GITHUB_FEEDBACK_TOKEN' in env &&
+        typeof env.GITHUB_FEEDBACK_TOKEN === 'string'
+        ? env.GITHUB_FEEDBACK_TOKEN
+        : null,
     ),
     {
       logger: ['error', 'warn'],

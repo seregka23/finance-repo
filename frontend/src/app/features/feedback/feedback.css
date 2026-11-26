@@ -1,0 +1,23 @@
+form {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+form label {
+  font-weight: 650;
+}
+textarea {
+  width: 100%;
+  resize: vertical;
+}
+form button {
+  justify-self: start;
+  margin-top: 8px;
+}
+.notice,
+.alert {
+  margin-top: 16px;
+}
+dialog .btn {
+  padding-inline: 14px;
+}

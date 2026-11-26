@@ -169,7 +169,7 @@ async function api(
   return value;
 }
 async function prepare() {
-  // Isolated fixture: production native authentication and synthetic recognition only.
+  // Run the app in isolation with deterministic external API responses.
   const fixture = `
 import 'reflect-metadata';
 import { env } from 'cloudflare:workers';
@@ -194,6 +194,18 @@ let categoryCalls = 0;
 const originalFetch = globalThis.fetch.bind(globalThis);
 globalThis.fetch = async (target, options) => {
   const address = typeof target === 'string' ? target : target instanceof URL ? target.href : target.url;
+  if (new URL(address).hostname === 'api.github.com') {
+    if (address !== 'https://api.github.com/repos/seregka23/finance-repo/issues') return new Response(null, {status:400});
+    const body = JSON.parse(options.body);
+    const headers = new Headers(options.headers);
+    if (options.method !== 'POST' || headers.get('authorization') !== 'Bearer fixture-only-feedback-token' ||
+        headers.get('user-agent') !== 'family-finance-feedback' ||
+        Object.keys(body).sort().join(',') !== 'body,title' || !body.title.includes('Feedback fixture') ||
+        !body.body.includes('Synthetic feedback message') || JSON.stringify(body).includes('@example.invalid'))
+      return new Response(null, {status: 400});
+    if (body.title.includes('rejected')) return Response.json({message:'fixture-private-github-error'}, {status:403});
+    return Response.json({number:42, html_url:'https://example.invalid/untrusted-link'}, {status:201});
+  }
   if (address === 'https://api.openai.com/v1/decisions' || address === 'https://generativelanguage.googleapis.com/v1beta/decisions') {
     categoryCalls++;
     const openai = address.startsWith('https://api.openai.com/');
@@ -332,6 +344,7 @@ export default { async fetch(request,bindings,context) {
         OPENAI_API_KEY: "fixture-only-no-live-provider",
         GEMINI_API_KEY: "fixture-only-no-live-provider",
         CATEGORY_DECISION_PROVIDER: categoryProvider,
+        GITHUB_FEEDBACK_TOKEN: "fixture-only-feedback-token",
       },
       compatibility_date: "2026-11-16",
       compatibility_flags: [
@@ -391,6 +404,40 @@ async function verify() {
     member = await token("member"),
     stranger = await token("stranger");
   let household, other, invitation, memberId;
+  await check(
+    "feedback uses the signed-in route and returns the canonical issue link",
+    async () => {
+      const path = "/api/v1/feedback";
+      const body = {
+        title: "Feedback fixture request",
+        message: "Synthetic feedback message",
+      };
+      const post = (session, status, request = {}) =>
+        api(path, session, { method: "POST", body, status, ...request });
+      assert.equal((await post(null, 401)).error.code, "UNAUTHENTICATED");
+      assert.equal(
+        (await post(owner, 403, { origin: "https://other.invalid" })).error
+          .code,
+        "INVALID_ORIGIN",
+      );
+      assert.equal(
+        (await post(owner, 400, { body: { ...body, repository: "other" } }))
+          .error.code,
+        "INVALID_INPUT",
+      );
+      assert.deepEqual(await post(owner, 201), {
+        issueNumber: 42,
+        issueUrl: "https://github.com/seregka23/finance-repo/issues/42",
+      });
+      const failure = await post(owner, 502, {
+        body: { ...body, title: "Feedback fixture rejected" },
+      });
+      assert.equal(failure.error.code, "FEEDBACK_FAILED");
+      assert.ok(
+        !JSON.stringify(failure).includes("fixture-private-github-error"),
+      );
+    },
+  );
   await check(
     "native sessions, cookie transport, malformed input and CSRF",
     async () => {
